@@ -615,6 +615,9 @@ protected:
      * Data related to handling stress normalization.
      */
     double d_epsilon;
+    double ipdg_poisson_penalty;
+    double cg_poisson_penalty;
+    std::string poisson_solver;
     bool d_has_stress_normalization_parts;
     std::vector<bool> d_stress_normalization_part;
 

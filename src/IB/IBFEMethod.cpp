@@ -229,7 +229,12 @@ void assemble_ipdg_poisson(EquationSystems & es,
   const MeshBase & mesh = es.get_mesh();
   const unsigned int dim = mesh.mesh_dimension();
   LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
-  const Real penalty = es.parameters.get<Real> ("penalty");
+  const Real penalty = es.parameters.get<Real> ("ipdg_poisson_penalty");
+  
+  
+  const double epsilon = es.parameters.get<Real>("Phi_epsilon");
+  const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
+
 
   const DofMap & dof_map = ellipticdg_system.get_dof_map();
 
@@ -315,7 +320,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
           {
               for (unsigned int j=0; j<n_dofs; j++)
               {
-                  Ke(i,j) += JxW[qp]*(dphi[i][qp]*dphi[j][qp]);
+                  Ke(i,j) += JxW[qp]*(epsilon_inv*phi[i][qp]*phi[j][qp] + dphi[i][qp]*dphi[j][qp]);
               }
           }
       }
@@ -534,7 +539,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
 static const Real PENALTY = 1.e10;
 
 void
-assemble_poisson(EquationSystems& es, const std::string& /*system_name*/)
+assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
 {
     const MeshBase& mesh = es.get_mesh();
     const BoundaryInfo& boundary_info = *mesh.boundary_info;
@@ -562,7 +567,10 @@ assemble_poisson(EquationSystems& es, const std::string& /*system_name*/)
 
     const double epsilon = es.parameters.get<Real>("Phi_epsilon");
     const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
+    
+    const Real PENALTY = es.parameters.get<Real> ("cg_poisson_penalty");
 
+    
     MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
     const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
     for (; el != end_el; ++el)
@@ -695,7 +703,14 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_stress_normalization_part[part] = true;
     System& Phi_system = d_equation_systems[part]->add_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
     d_equation_systems[part]->parameters.set<Real>("Phi_epsilon") = d_epsilon;
-    Phi_system.attach_assemble_function(assemble_poisson);
+    d_equation_systems[part]->parameters.set<Real>("ipdg_poisson_penalty") = ipdg_poisson_penalty;
+    d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
+    d_equation_systems[part]->parameters.set<std::string>("Poisson_solver") = poisson_solver;
+    
+    if(poisson_solver.compare("CG") == 0) Phi_system.attach_assemble_function(assemble_cg_poisson);
+    else if (poisson_solver.compare("IPDG") == 0) Phi_system.attach_assemble_function(assemble_ipdg_poisson);
+    else Phi_system.attach_assemble_function(assemble_cg_poisson);
+    
     Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
     return;
 } // registerStressNormalizationPart
@@ -3013,8 +3028,13 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
         d_do_log = db->getBool("do_log");
     else if (db->keyExists("enable_logging"))
         d_do_log = db->getBool("enable_logging");
-
+    
+    // get info for stress normalization
     if (db->isDouble("epsilon")) d_epsilon = db->getDouble("epsilon");
+    poisson_solver = db->getString("poisson_solver");
+    ipdg_poisson_penalty = db->getDouble("ipdg_poisson_penalty");
+    cg_poisson_penalty = db->getDouble("cg_poisson_penalty");
+    
     return;
 } // getFromInput
 
