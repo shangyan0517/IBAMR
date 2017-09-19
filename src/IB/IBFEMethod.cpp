@@ -338,7 +338,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
               fe_elem_face->reinit(elem, side);
 
               UniquePtr<Elem> elem_side (elem->build_side(side));
-              // h elemet dimension to compute the interior penalty penalty parameter
+              // h elemet dimension to compute the interior penalty parameter
               const unsigned int elem_b_order = static_cast<unsigned int> (fe_elem_face->get_order());
               const double h_elem = elem->volume()/elem_side->volume() * 1./pow(elem_b_order, 2.);
 
@@ -535,9 +535,6 @@ void assemble_ipdg_poisson(EquationSystems & es,
 }
 
 
-
-static const Real PENALTY = 1.e10;
-
 void
 assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
 {
@@ -607,6 +604,7 @@ assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
                 }
             }
         }
+        
         dof_map.constrain_element_matrix(Ke, dof_indices);
         system.matrix->add_matrix(Ke, dof_indices);
     }
@@ -1478,6 +1476,11 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     FEType Phi_fe_type = Phi_dof_map.variable_type(0);
     std::vector<int> Phi_vars(1, 0);
 
+     // some things for building rhs for linear system for Phi
+    const Real cg_possion_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
+    const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
+    const std::string poisson_solver = equation_systems->parameters.get<std::string> ("Poisson_solver");
+    
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
     for (unsigned int d = 0; d < NDIM; ++d) X_vars[d] = d;
@@ -1646,7 +1649,19 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int i = 0; i < n_basis; ++i)
                 {
-                    Phi_rhs_e(i) += PENALTY * Phi * phi_face[i][qp] * JxW_face[qp];
+                    if (poisson_solver.compare("CG") == 0)
+                    {
+                        Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
+                    }
+                    else if (poisson_solver.compare("IPDG") == 0)
+                    {
+                        
+                    }
+                    else // default solver to CG
+                    {
+                        Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
+                    }    
+                       
                 }
             }
 
