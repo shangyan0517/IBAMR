@@ -257,14 +257,12 @@ void assemble_ipdg_poisson(EquationSystems & es,
   const std::vector<Real> & JxW = fe->get_JxW();
   const std::vector<std::vector<RealGradient> > & dphi = fe->get_dphi();
   const std::vector<std::vector<Real> > &  phi = fe->get_phi();
-  const std::vector<libMesh::Point> & qvolume_points = fe->get_xyz();
 
   //  for surface integrals
   const std::vector<std::vector<Real> > &  phi_face = fe_elem_face->get_phi();
   const std::vector<std::vector<RealGradient> > & dphi_face = fe_elem_face->get_dphi();
   const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
   const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
-  const std::vector<libMesh::Point> & qface_points = fe_elem_face->get_xyz();
 
   // for surface integrals on the neighbor boundary
   const std::vector<std::vector<Real> > &  phi_neighbor_face = fe_neighbor_face->get_phi();
