@@ -106,6 +106,7 @@
 #include "libmesh/type_vector.h"
 #include "libmesh/variant_filter_iterator.h"
 #include "libmesh/vector_value.h"
+#include "libmesh/fe_interface.h"
 #include "petscvec.h"
 #include "tbox/Array.h"
 #include "tbox/Database.h"
@@ -256,14 +257,14 @@ void assemble_ipdg_poisson(EquationSystems & es,
   const std::vector<Real> & JxW = fe->get_JxW();
   const std::vector<std::vector<RealGradient> > & dphi = fe->get_dphi();
   const std::vector<std::vector<Real> > &  phi = fe->get_phi();
-  const std::vector<Point> & qvolume_points = fe->get_xyz();
+  const std::vector<libMesh::Point> & qvolume_points = fe->get_xyz();
 
   //  for surface integrals
   const std::vector<std::vector<Real> > &  phi_face = fe_elem_face->get_phi();
   const std::vector<std::vector<RealGradient> > & dphi_face = fe_elem_face->get_dphi();
   const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
-  const std::vector<Point> & qface_normals = fe_elem_face->get_normals();
-  const std::vector<Point> & qface_points = fe_elem_face->get_xyz();
+  const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
+  const std::vector<libMesh::Point> & qface_points = fe_elem_face->get_xyz();
 
   // for surface integrals on the neighbor boundary
   const std::vector<std::vector<Real> > &  phi_neighbor_face = fe_neighbor_face->get_phi();
@@ -396,10 +397,10 @@ void assemble_ipdg_poisson(EquationSystems & es,
                   const double h_elem = (elem->volume()/elem_side->volume()) * 1./pow(side_order,2.);
 
                   // The quadrature point locations on the neighbor side
-                  std::vector<Point> qface_neighbor_point;
+                  std::vector<libMesh::Point> qface_neighbor_point;
 
                   // The quadrature point locations on the element side
-                  std::vector<Point > qface_point;
+                  std::vector<libMesh::Point > qface_point;
 
                   // Reinitialize shape functions on the element side
                   fe_elem_face->reinit(elem, side);
@@ -705,6 +706,7 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
     d_equation_systems[part]->parameters.set<std::string>("Poisson_solver") = poisson_solver;
     
+    // assign function for building Phi linear system.  defaults to CG discretization
     if(poisson_solver.compare("CG") == 0) Phi_system.attach_assemble_function(assemble_cg_poisson);
     else if (poisson_solver.compare("IPDG") == 0) Phi_system.attach_assemble_function(assemble_ipdg_poisson);
     else Phi_system.attach_assemble_function(assemble_cg_poisson);
@@ -1476,8 +1478,12 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     FEType Phi_fe_type = Phi_dof_map.variable_type(0);
     std::vector<int> Phi_vars(1, 0);
 
-     // some things for building rhs for linear system for Phi
-    const Real cg_possion_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
+    // for IPDG penalty parameter    
+    UniquePtr<FEBase> libmesh_fe_face (FEBase::build(dim, Phi_fe_type));
+    const unsigned int elem_b_order = static_cast<unsigned int> (libmesh_fe_face->get_order());
+    
+    // things for building RHS of Phi linear system based on poisson solver.
+    const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
     const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
     const std::string poisson_solver = equation_systems->parameters.get<std::string> ("Poisson_solver");
     
@@ -1512,6 +1518,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const std::vector<double>& JxW_face = fe.getQuadratureWeightsFace();
     const std::vector<libMesh::Point>& normal_face = fe.getNormalsFace();
     const std::vector<std::vector<double> >& phi_face = fe.getPhiFace(Phi_fe_type);
+    const std::vector<std::vector<libMesh::VectorValue<double> > >& dphi_face = fe.getDphiFace(Phi_fe_type);
 
     const std::vector<std::vector<std::vector<double> > >& fe_interp_var_data = fe.getVarInterpolation();
     const std::vector<std::vector<std::vector<VectorValue<double> > > >& fe_interp_grad_var_data =
@@ -1558,6 +1565,11 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             fe.interpolate(elem, side);
             const unsigned int n_qp = qrule_face->n_points();
             const size_t n_basis = phi_face.size();
+            
+            // for the IPDG penalty parameter   
+            UniquePtr<Elem> elem_side (elem->build_side(side));
+            const double h_elem = elem->volume()/elem_side->volume() * 1./pow(elem_b_order, 2.);
+            
             for (unsigned int qp = 0; qp < n_qp; ++qp)
             {
                 // X:     reference coordinate
@@ -1656,6 +1668,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                     else if (poisson_solver.compare("IPDG") == 0)
                     {
                         
+                        Phi_rhs_e(i) += JxW_face[qp] * Phi * ipdg_poisson_penalty/h_elem * phi_face[i][qp];
+                        Phi_rhs_e(i) -= JxW_face[qp] * dphi_face[i][qp] * (Phi*normal_face[qp]);
                     }
                     else // default solver to CG
                     {
