@@ -227,6 +227,8 @@ void assemble_ipdg_poisson(EquationSystems & es,
                          const std::string & system_name)
 {
 
+  std::cout << "in IPDG assemble" << std::endl;
+     
   const MeshBase & mesh = es.get_mesh();
   const unsigned int dim = mesh.mesh_dimension();
   LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
@@ -276,7 +278,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
   DenseMatrix<Number> Kee;
   DenseMatrix<Number> Knn;
 
-  // vector for degree of freedom indices on a particular element
+   // vector for degree of freedom indices on a particular element
   std::vector<dof_id_type> dof_indices;
 
   // loop over elements
@@ -705,11 +707,24 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_equation_systems[part]->parameters.set<std::string>("Poisson_solver") = poisson_solver;
     
     // assign function for building Phi linear system.  defaults to CG discretization
-    if(poisson_solver.compare("CG") == 0) Phi_system.attach_assemble_function(assemble_cg_poisson);
-    else if (poisson_solver.compare("IPDG") == 0) Phi_system.attach_assemble_function(assemble_ipdg_poisson);
-    else Phi_system.attach_assemble_function(assemble_cg_poisson);
     
-    Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
+    
+    if(poisson_solver.compare("CG") == 0) 
+    {
+        Phi_system.attach_assemble_function(assemble_cg_poisson);
+        Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
+    }
+    else if (poisson_solver.compare("IPDG") == 0)
+    {
+        Phi_system.attach_assemble_function(assemble_ipdg_poisson);
+        Phi_system.add_variable("Phi", d_fe_order[part], MONOMIAL);
+    }
+    else 
+    {
+        Phi_system.attach_assemble_function(assemble_cg_poisson);
+        Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
+    }
+        
     return;
 } // registerStressNormalizationPart
 
@@ -3061,6 +3076,7 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     poisson_solver = db->getString("poisson_solver");
     ipdg_poisson_penalty = db->getDouble("ipdg_poisson_penalty");
     cg_poisson_penalty = db->getDouble("cg_poisson_penalty");
+        
     
     return;
 } // getFromInput

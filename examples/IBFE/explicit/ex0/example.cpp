@@ -249,6 +249,8 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager();
         ib_method_ops->registerInitialCoordinateMappingFunction(coordinate_mapping_function);
         ib_method_ops->registerPK1StressFunction(PK1_stress_function);
+        
+ 
         if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
         {
             ib_method_ops->registerStressNormalizationPart();
