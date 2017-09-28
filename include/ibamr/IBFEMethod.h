@@ -113,6 +113,11 @@ public:
     SAMRAI::tbox::Pointer<SAMRAI::pdat::SideVariable<NDIM, double> > mask_var;
     int mask_current_idx, mask_new_idx, mask_scratch_idx;
 
+    // information for representing (interpolating) the stress normalization
+    // variable phi on the cell-centered Cartesian grid
+    SAMRAI::tbox::Pointer<SAMRAI::pdat::CellVariable<NDIM, double> > phi_var;
+    int phi_current_idx, phi_new_idx, phi_scratch_idx;
+    
     /*!
      * \brief Constructor.
      */

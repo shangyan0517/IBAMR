@@ -365,7 +365,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         const int p_idx = var_db->mapVariableAndContextToIndex(p_var, p_ctx);
         const int p_cloned_idx = var_db->registerClonedPatchDataIndex(p_var, p_idx);
         visit_data_writer->registerPlotQuantity("P error", "SCALAR", p_cloned_idx);
-
+        
         const int coarsest_ln = 0;
         const int finest_ln = patch_hierarchy->getFinestLevelNumber();
         for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
