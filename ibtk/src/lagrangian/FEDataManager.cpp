@@ -1033,7 +1033,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
     std::vector<libMesh::Point> s_node_cache, X_node_cache;
     Point X_min, X_max;
     std::vector<libMesh::Point> intersection_ref_coords;
-    std::vector<SideIndex<NDIM> > intersection_indices;
+    std::vector<CellIndex<NDIM> > intersection_indices;
     Pointer<PatchLevel<NDIM> > level = d_hierarchy->getPatchLevel(d_level_number);
     const IntVector<NDIM>& ratio = level->getRatio();
     const Pointer<CartesianGridGeometry<NDIM> > grid_geom = level->getGridGeometry();
@@ -1054,13 +1054,10 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
         const double* const patch_x_lower = patch_geom->getXLower();
         const double* const patch_dx = patch_geom->getDx();
 
-        boost::array<Box<NDIM>, NDIM> side_boxes;
-        for (unsigned int axis = 0; axis < NDIM; ++axis)
-        {
-            side_boxes[axis] = SideGeometry<NDIM>::toSideBox(patch_box, axis);
-        }
-
-        SideData<NDIM, int> num_intersections(patch_box, 1, IntVector<NDIM>(0));
+        Box<NDIM>& cell_boxes;
+        cell_boxes = CellGeometry<NDIM>::toCellBox(patch_box);
+        
+        CellData<NDIM, int> num_intersections(patch_box, 1, IntVector<NDIM>(0));
         num_intersections.fillAll(0);
 
         // Loop over the elements and compute the values to be prolonged.
@@ -1102,32 +1099,31 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
             // that are covered by the element.
             intersection_ref_coords.clear();
             intersection_indices.clear();
-            for (unsigned int axis = 0; axis < NDIM; ++axis)
+      
+            // Loop over the relevant range of indices.
+            for (CellIterator<NDIM> b(box); b; b++)
             {
-                // Loop over the relevant range of indices.
-                for (SideIterator<NDIM> b(box, axis); b; b++)
+                const CellIndex<NDIM>& i_s = b();
+                if (num_intersections(i_s) == 0 && cell_boxes.contains(i_s))
                 {
-                    const SideIndex<NDIM>& i_s = b();
-                    if (num_intersections(i_s) == 0 && side_boxes[axis].contains(i_s))
+                    libMesh::Point p;
+                    for (unsigned int d = 0; d < NDIM; ++d)
                     {
-                        libMesh::Point p;
-                        for (unsigned int d = 0; d < NDIM; ++d)
-                        {
-                            p(d) =
+                        p(d) =
                                 patch_x_lower[d] +
                                 patch_dx[d] * (static_cast<double>(i_s(d) - patch_lower[d]) + (d == axis ? 0.0 : 0.5));
-                        }
-                        static const double TOL = sqrt(std::numeric_limits<double>::epsilon());
-                        const libMesh::Point ref_coords = FEInterface::inverse_map(dim, X_fe_type, elem, p, TOL, false);
-                        if (FEInterface::on_reference_element(ref_coords, elem->type(), TOL))
-                        {
-                            intersection_ref_coords.push_back(ref_coords);
-                            intersection_indices.push_back(i_s);
-                            num_intersections(i_s) += 1;
-                        }
+                    }
+                    static const double TOL = sqrt(std::numeric_limits<double>::epsilon());
+                    const libMesh::Point ref_coords = FEInterface::inverse_map(dim, X_fe_type, elem, p, TOL, false);
+                    if (FEInterface::on_reference_element(ref_coords, elem->type(), TOL))
+                    {
+                        intersection_ref_coords.push_back(ref_coords);
+                        intersection_indices.push_back(i_s);
+                        num_intersections(i_s) += 1;
                     }
                 }
             }
+            
 
             // Restore the nodal coordinates.
             for (unsigned int k = 0; k < n_node; ++k)
