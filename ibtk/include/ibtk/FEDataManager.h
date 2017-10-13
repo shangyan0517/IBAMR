@@ -411,11 +411,7 @@ public:
      * grid with Cell Centered degrees of freedom
      */
     void prolongDataCellCentered(int f_data_idx,
-                     libMesh::NumericVector<double>& F,
-                     libMesh::NumericVector<double>& X,
-                     const std::string& system_name,
-                     bool is_density = true,
-                     bool accumulate_on_grid = true);
+                     const std::string& system_name);
 
     /*!
      * \brief Interpolate a value from the Cartesian grid to the FE mesh using
