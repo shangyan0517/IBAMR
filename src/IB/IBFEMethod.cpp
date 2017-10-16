@@ -1309,7 +1309,7 @@ IBFEMethod::registerEulerianVariables()
                      ghosts,
                      "CONSERVATIVE_COARSEN",
                      "CONSERVATIVE_LINEAR_REFINE");
-    
+        
     // register variable for stress normalization function phi
     // represented on the Cartesian mesh
     phi_var = new CellVariable<NDIM, double>(d_object_name + "::phi");

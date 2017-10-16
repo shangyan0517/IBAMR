@@ -137,6 +137,8 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
     // resize u_err and p_err to hold error data
     u_err.resize(3);
     p_err.resize(3);
+    
+            
 
     { // cleanup dynamically allocated objects prior to shutdown
 
@@ -249,13 +251,12 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager();
         ib_method_ops->registerInitialCoordinateMappingFunction(coordinate_mapping_function);
         ib_method_ops->registerPK1StressFunction(PK1_stress_function);
-        ib_method_ops->registerEulerianVariables();   
-      
+        
         if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
         {
             ib_method_ops->registerStressNormalizationPart();
-        }
-
+        }        
+        
         // Set up post processor to recover computed stresses.
         Pointer<IBFEPostProcessor> ib_post_processor =
             new IBFECentroidPostProcessor("IBFEPostProcessor", fe_data_manager);
@@ -350,11 +351,11 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         // Print the input database contents to the log file.
         plog << "Input database:\n";
         input_db->printClassData(plog);
-
+        
         // Setup data used to determine the accuracy of the computed solution.
         const Pointer<hier::Variable<NDIM> > u_var = navier_stokes_integrator->getVelocityVariable();
         const Pointer<VariableContext> u_ctx = navier_stokes_integrator->getCurrentContext();
-
+        
         VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
         const int u_idx = var_db->mapVariableAndContextToIndex(u_var, u_ctx);
         const int u_cloned_idx = var_db->registerClonedPatchDataIndex(u_var, u_idx);
@@ -507,16 +508,22 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                 volume_stream << loop_time << " " << J_integral << endl;
             }
             
-            // compute projection of pressure-like field phi onto cartesian grid.
+            std::cout << "help 1" << std::endl;
+            
+            // compute projection of pressure-like field phi onto Cartesian grid.
             System& Phi_system = equation_systems->get_system<System>(IBFEMethod::PHI_SYSTEM_NAME);
+            std::cout << "help 1.5" << std::endl;
             NumericVector<double>* Phi_vec = Phi_system.solution.get();
-            FEDataManager::prolongDataCellCentered(phi_current_idx,
-                                                   Phi_vec,
-                                                   X_vec,
-                                                   IBFEMethod::PHI_SYSTEM_NAME,
-                                                   false,
-                                                   false)
-
+            NumericVector<double>* Phi_ghost_vec = Phi_system.current_local_solution.get();
+            Phi_vec->localize(*Phi_ghost_vec);
+            std::cout << "help 1.7" << std::endl;
+            const int phi_idx = ib_method_ops->phi_current_idx;
+            fe_data_manager->prolongDataCellCentered(phi_idx,
+                                                     *Phi_vec,
+                                                     *X_vec,
+                                                     IBFEMethod::PHI_SYSTEM_NAME);
+            
+            std::cout << "help 2" << std::endl;
 
             // Compute velocity and pressure error norms.
             const int coarsest_ln = 0;
@@ -576,13 +583,13 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
 
             HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
             const double p_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_idx, wgt_cc_idx);
-            const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_current_idx, wgt_cc_idx);
+            const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_idx, p_idx, -p_mean);
-            hier_cc_data_ops.addScalar(phi_current_idx, phi_current_idx, -phi_mean);
+            hier_cc_data_ops.addScalar(phi_idx, phi_idx, -phi_mean);
             const double p_cloned_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_cloned_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_cloned_idx, p_cloned_idx, -p_cloned_mean);
             
-            hier_cc_data_ops.subtract(p_idx, p_idx, phi_current_idx);
+            hier_cc_data_ops.subtract(p_idx, p_idx, phi_idx);
             hier_cc_data_ops.subtract(p_cloned_idx, p_idx, p_cloned_idx);
             
             pout << "Error in p at time " << loop_time - 0.5 * dt << ":\n"

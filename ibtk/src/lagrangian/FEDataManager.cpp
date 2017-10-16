@@ -965,7 +965,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
 {
     IBTK_TIMER_START(t_prolong_data_cell_centered);
 
-    // NOTE #1: This routine is sepcialized for a staggered-grid Eulerian
+    // NOTE #1: This routine is specialized for a staggered-grid Eulerian
     // discretization.  It should be straightforward to generalize it to work
     // with other data centerings.
     //
@@ -1008,6 +1008,8 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
     const std::vector<std::vector<double> >& phi_F = F_fe->get_phi();
     const std::vector<std::vector<VectorValue<double> > >& dphi_X = X_fe->get_dphi();
 
+    std::cout << "in prolong data 1" << std::endl;
+    
     // Communicate any unsynchronized ghost data and extract the underlying
     // solution data.
     /*if (!F_vec.closed())*/ F_vec.close();
@@ -1025,6 +1027,8 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
     VecGhostGetLocalForm(X_global_vec, &X_local_vec);
     double* X_local_soln;
     VecGetArray(X_local_vec, &X_local_soln);
+    
+    std::cout << "in prolong data 2" << std::endl;
 
     // Loop over the patches to interpolate nodal values on the FE mesh to the
     // points of the Eulerian grid.
@@ -1145,7 +1149,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
             {
                 const CellIndex<NDIM>& i_c = intersection_indices[qp];
                 typedef boost::multi_array_types::index_range range;
-                double F_qp = interpolate(qp, F_node[boost::indices[range(0, n_node)][n_vars]], phi_F);
+                double F_qp = interpolate(qp, F_node[boost::indices[range(0, n_node)][0]], phi_F);
                 if (is_density)
                 {
                     jacobian(dX_ds, qp, X_node, dphi_X);
@@ -2320,6 +2324,7 @@ FEDataManager::FEDataManager(const std::string& object_name,
             TimerManager::getManager()->getTimer("IBTK::FEDataManager::buildGhostedSolutionVector()");
         t_spread = TimerManager::getManager()->getTimer("IBTK::FEDataManager::spread()");
         t_prolong_data = TimerManager::getManager()->getTimer("IBTK::FEDataManager::prolongData()");
+        t_prolong_data_cell_centered = TimerManager::getManager()->getTimer("IBTK::FEDataManager::prolongDataCellCentered()");
         t_interp_weighted = TimerManager::getManager()->getTimer("IBTK::FEDataManager::interpWeighted()");
         t_interp = TimerManager::getManager()->getTimer("IBTK::FEDataManager::interp()");
         t_restrict_data = TimerManager::getManager()->getTimer("IBTK::FEDataManager::restrictData()");
