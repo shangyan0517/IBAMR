@@ -986,7 +986,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
     // Extract the FE systems and DOF maps, and setup the FE object.
     System& F_system = d_es->get_system(system_name);
     const unsigned int n_vars = F_system.n_vars();
-    TBOX_ASSERT(n_vars == NDIM); // specialized to side-centered data
+    TBOX_ASSERT(n_vars == 1); // specialized to cell-centered scalar valued data
     const DofMap& F_dof_map = F_system.get_dof_map();
     SystemDofMapCache& F_dof_map_cache = *getDofMapCache(system_name);
     System& X_system = d_es->get_system(system_name);
@@ -1053,9 +1053,6 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
         const Pointer<CartesianPatchGeometry<NDIM> > patch_geom = patch->getPatchGeometry();
         const double* const patch_x_lower = patch_geom->getXLower();
         const double* const patch_dx = patch_geom->getDx();
-
-        Box<NDIM>& cell_boxes;
-        cell_boxes = CellGeometry<NDIM>::toCellBox(patch_box);
                
         CellData<NDIM, int> num_intersections(patch_box, 1, IntVector<NDIM>(0));
         num_intersections.fillAll(0);
@@ -1103,22 +1100,22 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
             // Loop over the relevant range of indices.
             for (CellIterator<NDIM> b(box); b; b++)
             {
-                const CellIndex<NDIM>& i_s = b();
-                if (num_intersections(i_s) == 0 && cell_boxes.contains(i_s))
+                const CellIndex<NDIM>& i_c = b();
+                if ( num_intersections(i_c) == 0 && patch_box.contains(i_c) )
                 {
                     libMesh::Point p;
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
                         p(d) =  patch_x_lower[d] +
-                                0.5 * patch_dx[d] * (static_cast<double>(i_s(d) - patch_lower[d]);
+                                0.5 * patch_dx[d] * ( static_cast<double>(i_c(d) - patch_lower[d]) );
                     }
                     static const double TOL = sqrt(std::numeric_limits<double>::epsilon());
                     const libMesh::Point ref_coords = FEInterface::inverse_map(dim, X_fe_type, elem, p, TOL, false);
                     if (FEInterface::on_reference_element(ref_coords, elem->type(), TOL))
                     {
                         intersection_ref_coords.push_back(ref_coords);
-                        intersection_indices.push_back(i_s);
-                        num_intersections(i_s) += 1;
+                        intersection_indices.push_back(i_c);
+                        num_intersections(i_c) += 1;
                     }
                 }
             }
@@ -1146,16 +1143,15 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
             if (X_fe != F_fe) X_fe->reinit(elem, &intersection_ref_coords);
             for (unsigned int qp = 0; qp < intersection_ref_coords.size(); ++qp)
             {
-                const SideIndex<NDIM>& i_s = intersection_indices[qp];
-                const int axis = i_s.getAxis();
+                const CellIndex<NDIM>& i_c = intersection_indices[qp];
                 typedef boost::multi_array_types::index_range range;
-                double F_qp = interpolate(qp, F_node[boost::indices[range(0, n_node)][axis]], phi_F);
+                double F_qp = interpolate(qp, F_node[boost::indices[range(0, n_node)][n_vars]], phi_F);
                 if (is_density)
                 {
                     jacobian(dX_ds, qp, X_node, dphi_X);
                     F_qp /= std::abs(dX_ds.det());
                 }
-                (*f_data)(i_s) += F_qp / static_cast<double>(num_intersections(i_s));
+                (*f_data)(i_c) += F_qp / static_cast<double>( num_intersections(i_c) );
             }
         }
     }

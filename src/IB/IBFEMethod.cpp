@@ -1716,7 +1716,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     Phi_system.solve();
     Phi_system.solution->close();
     Phi_system.solution->localize(Phi_vec);
-    Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec);
+    Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec);  // what is this for??
     return;
 }
 

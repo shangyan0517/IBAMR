@@ -249,8 +249,8 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager();
         ib_method_ops->registerInitialCoordinateMappingFunction(coordinate_mapping_function);
         ib_method_ops->registerPK1StressFunction(PK1_stress_function);
-        
- 
+        ib_method_ops->registerEulerianVariables();   
+      
         if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
         {
             ib_method_ops->registerStressNormalizationPart();
@@ -361,7 +361,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
 
         const Pointer<hier::Variable<NDIM> > p_var = navier_stokes_integrator->getPressureVariable();
         const Pointer<VariableContext> p_ctx = navier_stokes_integrator->getCurrentContext();
-
+        
         const int p_idx = var_db->mapVariableAndContextToIndex(p_var, p_ctx);
         const int p_cloned_idx = var_db->registerClonedPatchDataIndex(p_var, p_idx);
         visit_data_writer->registerPlotQuantity("P error", "SCALAR", p_cloned_idx);
@@ -464,6 +464,59 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                             loop_time,
                             postproc_data_dump_dirname);
             }
+            
+            
+            // Compute the volume of the structure.
+            double J_integral = 0.0;
+            System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
+            NumericVector<double>* X_vec = X_system.solution.get();
+            NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
+            X_vec->localize(*X_ghost_vec);
+            DofMap& X_dof_map = X_system.get_dof_map();
+            std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
+            AutoPtr<FEBase> fe(FEBase::build(NDIM, X_dof_map.variable_type(0)));
+            AutoPtr<QBase> qrule = QBase::build(QGAUSS, NDIM, FIFTH);
+            fe->attach_quadrature_rule(qrule.get());
+            const std::vector<double>& JxW = fe->get_JxW();
+            const std::vector<std::vector<VectorValue<double> > >& dphi = fe->get_dphi();
+            TensorValue<double> FF;
+            boost::multi_array<double, 2> X_node;
+            const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
+            const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
+            for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
+            {
+                Elem* const elem = *el_it;
+                fe->reinit(elem);
+                for (unsigned int d = 0; d < NDIM; ++d)
+                {
+                    X_dof_map.dof_indices(elem, X_dof_indices[d], d);
+                }
+                const int n_qp = qrule->n_points();
+                get_values_for_interpolation(X_node, *X_ghost_vec, X_dof_indices);
+                for (int qp = 0; qp < n_qp; ++qp)
+                {
+                    jacobian(FF, qp, X_node, dphi);
+                    J_integral += abs(FF.det()) * JxW[qp];
+                }
+            }
+            J_integral = SAMRAI_MPI::sumReduction(J_integral);
+            if (SAMRAI_MPI::getRank() == 0)
+            {
+                volume_stream.precision(12);
+                volume_stream.setf(ios::fixed, ios::floatfield);
+                volume_stream << loop_time << " " << J_integral << endl;
+            }
+            
+            // compute projection of pressure-like field phi onto cartesian grid.
+            System& Phi_system = equation_systems->get_system<System>(IBFEMethod::PHI_SYSTEM_NAME);
+            NumericVector<double>* Phi_vec = Phi_system.solution.get();
+            FEDataManager::prolongDataCellCentered(phi_current_idx,
+                                                   Phi_vec,
+                                                   X_vec,
+                                                   IBFEMethod::PHI_SYSTEM_NAME,
+                                                   false,
+                                                   false)
+
 
             // Compute velocity and pressure error norms.
             const int coarsest_ln = 0;
@@ -523,10 +576,15 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
 
             HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
             const double p_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_idx, wgt_cc_idx);
+            const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_current_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_idx, p_idx, -p_mean);
+            hier_cc_data_ops.addScalar(phi_current_idx, phi_current_idx, -phi_mean);
             const double p_cloned_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_cloned_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_cloned_idx, p_cloned_idx, -p_cloned_mean);
+            
+            hier_cc_data_ops.subtract(p_idx, p_idx, phi_current_idx);
             hier_cc_data_ops.subtract(p_cloned_idx, p_idx, p_cloned_idx);
+            
             pout << "Error in p at time " << loop_time - 0.5 * dt << ":\n"
                  << "  L1-norm:  " 
                  << std::setprecision(10) << hier_cc_data_ops.L1Norm(p_cloned_idx, wgt_cc_idx) << "\n"
@@ -538,46 +596,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                  p_err[1] = hier_cc_data_ops.L2Norm(p_cloned_idx, wgt_cc_idx);
                  p_err[2] = hier_cc_data_ops.maxNorm(p_cloned_idx, wgt_cc_idx);
 
-            // Compute the volume of the structure.
-            double J_integral = 0.0;
-            System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
-            NumericVector<double>* X_vec = X_system.solution.get();
-            NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
-            X_vec->localize(*X_ghost_vec);
-            DofMap& X_dof_map = X_system.get_dof_map();
-            std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
-            AutoPtr<FEBase> fe(FEBase::build(NDIM, X_dof_map.variable_type(0)));
-            AutoPtr<QBase> qrule = QBase::build(QGAUSS, NDIM, FIFTH);
-            fe->attach_quadrature_rule(qrule.get());
-            const std::vector<double>& JxW = fe->get_JxW();
-            const std::vector<std::vector<VectorValue<double> > >& dphi = fe->get_dphi();
-            TensorValue<double> FF;
-            boost::multi_array<double, 2> X_node;
-            const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
-            const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
-            for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
-            {
-                Elem* const elem = *el_it;
-                fe->reinit(elem);
-                for (unsigned int d = 0; d < NDIM; ++d)
-                {
-                    X_dof_map.dof_indices(elem, X_dof_indices[d], d);
-                }
-                const int n_qp = qrule->n_points();
-                get_values_for_interpolation(X_node, *X_ghost_vec, X_dof_indices);
-                for (int qp = 0; qp < n_qp; ++qp)
-                {
-                    jacobian(FF, qp, X_node, dphi);
-                    J_integral += abs(FF.det()) * JxW[qp];
-                }
-            }
-            J_integral = SAMRAI_MPI::sumReduction(J_integral);
-            if (SAMRAI_MPI::getRank() == 0)
-            {
-                volume_stream.precision(12);
-                volume_stream.setf(ios::fixed, ios::floatfield);
-                volume_stream << loop_time << " " << J_integral << endl;
-            }
+            
         }
 
         // Close the logging streams.
