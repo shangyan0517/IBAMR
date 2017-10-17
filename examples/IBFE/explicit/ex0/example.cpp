@@ -582,9 +582,13 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                 fe_data_manager->prolongDataCellCentered(phi_idx,
                                                          *Phi_ghost_vec,
                                                          *X_ghost_vec,
-                                                         IBFEMethod::PHI_SYSTEM_NAME);
+                                                         IBFEMethod::PHI_SYSTEM_NAME,
+                                                         false,
+                                                         false);
                 
                 const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
+                std::cout << "volume = " <<  volume << std::endl;
+                std::cout << "phi_mean = " << phi_mean << std::endl; 
                 hier_cc_data_ops.addScalar(phi_idx, phi_idx, -phi_mean);
                 // add in computed pressure-like field from harmonic problem
                 hier_cc_data_ops.add(p_idx, p_idx, phi_idx); 
