@@ -965,24 +965,12 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
 {
     IBTK_TIMER_START(t_prolong_data_cell_centered);
 
-    // NOTE #1: This routine is specialized for a staggered-grid Eulerian
-    // discretization.  It should be straightforward to generalize it to work
-    // with other data centerings.
-    //
-    // NOTE #2: This code is specialized for isoparametric elements.  It is less
-    // clear how to relax this assumption.
-    //
-    // NOTE #3: This implementation optionally uses the pointwise value of J =
-    // det(dX/ds) to convert a Lagrangian density into an Eulerian density.  We
-    // should investigate whether there is any advantage to using a projection
-    // of J onto a (discontinuous) FE basis instead of evaluating J directly
-    // from the discrete deformation.
 
     // Extract the mesh.
     const MeshBase& mesh = d_es->get_mesh();
     const unsigned int dim = mesh.mesh_dimension();
     TBOX_ASSERT(dim == NDIM);
-
+    
     // Extract the FE systems and DOF maps, and setup the FE object.
     System& F_system = d_es->get_system(system_name);
     const unsigned int n_vars = F_system.n_vars();
@@ -997,7 +985,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
     FEType F_fe_type = F_dof_map.variable_type(0);
     for (unsigned i = 0; i < n_vars; ++i) TBOX_ASSERT(F_dof_map.variable_type(i) == F_fe_type);
     FEType X_fe_type = X_dof_map.variable_type(0);
-    for (unsigned d = 0; d < NDIM; ++d) TBOX_ASSERT(X_dof_map.variable_type(d) == X_fe_type);
+    for (unsigned d = 0; d < n_vars; ++d) TBOX_ASSERT(X_dof_map.variable_type(d) == X_fe_type);
     AutoPtr<FEBase> F_fe_autoptr(FEBase::build(dim, F_fe_type)), X_fe_autoptr(NULL);
     if (F_fe_type != X_fe_type)
     {
@@ -1008,7 +996,6 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
     const std::vector<std::vector<double> >& phi_F = F_fe->get_phi();
     const std::vector<std::vector<VectorValue<double> > >& dphi_X = X_fe->get_dphi();
 
-    std::cout << "in prolong data 1" << std::endl;
     
     // Communicate any unsynchronized ghost data and extract the underlying
     // solution data.
@@ -1027,8 +1014,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
     VecGhostGetLocalForm(X_global_vec, &X_local_vec);
     double* X_local_soln;
     VecGetArray(X_local_vec, &X_local_soln);
-    
-    std::cout << "in prolong data 2" << std::endl;
+
 
     // Loop over the patches to interpolate nodal values on the FE mesh to the
     // points of the Eulerian grid.

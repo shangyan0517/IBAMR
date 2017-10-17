@@ -252,6 +252,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         ib_method_ops->registerInitialCoordinateMappingFunction(coordinate_mapping_function);
         ib_method_ops->registerPK1StressFunction(PK1_stress_function);
         
+        // setup libmesh things for eliminating pressure jumps
         if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
         {
             ib_method_ops->registerStressNormalizationPart();
@@ -393,7 +394,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                     exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
             }
         }
-
+        
         // Open streams to save volume of structure.
         ofstream volume_stream;
         if (SAMRAI_MPI::getRank() == 0)
@@ -508,23 +509,6 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                 volume_stream << loop_time << " " << J_integral << endl;
             }
             
-            std::cout << "help 1" << std::endl;
-            
-            // compute projection of pressure-like field phi onto Cartesian grid.
-            System& Phi_system = equation_systems->get_system<System>(IBFEMethod::PHI_SYSTEM_NAME);
-            std::cout << "help 1.5" << std::endl;
-            NumericVector<double>* Phi_vec = Phi_system.solution.get();
-            NumericVector<double>* Phi_ghost_vec = Phi_system.current_local_solution.get();
-            Phi_vec->localize(*Phi_ghost_vec);
-            std::cout << "help 1.7" << std::endl;
-            const int phi_idx = ib_method_ops->phi_current_idx;
-            fe_data_manager->prolongDataCellCentered(phi_idx,
-                                                     *Phi_vec,
-                                                     *X_vec,
-                                                     IBFEMethod::PHI_SYSTEM_NAME);
-            
-            std::cout << "help 2" << std::endl;
-
             // Compute velocity and pressure error norms.
             const int coarsest_ln = 0;
             const int finest_ln = patch_hierarchy->getFinestLevelNumber();
@@ -583,13 +567,29 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
 
             HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
             const double p_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_idx, wgt_cc_idx);
-            const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_idx, p_idx, -p_mean);
-            hier_cc_data_ops.addScalar(phi_idx, phi_idx, -phi_mean);
             const double p_cloned_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_cloned_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_cloned_idx, p_cloned_idx, -p_cloned_mean);
             
-            hier_cc_data_ops.subtract(p_idx, p_idx, phi_idx);
+            // compute projection of pressure-like field phi onto Cartesian grid.
+            if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
+            {
+                System& Phi_system = equation_systems->get_system<System>(IBFEMethod::PHI_SYSTEM_NAME);
+                NumericVector<double>* Phi_vec = Phi_system.solution.get();
+                NumericVector<double>* Phi_ghost_vec = Phi_system.current_local_solution.get();
+                Phi_vec->localize(*Phi_ghost_vec);
+                const int phi_idx = ib_method_ops->phi_current_idx;
+                fe_data_manager->prolongDataCellCentered(phi_idx,
+                                                         *Phi_ghost_vec,
+                                                         *X_ghost_vec,
+                                                         IBFEMethod::PHI_SYSTEM_NAME);
+                
+                const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
+                hier_cc_data_ops.addScalar(phi_idx, phi_idx, -phi_mean);
+                // add in computed pressure-like field from harmonic problem
+                hier_cc_data_ops.add(p_idx, p_idx, phi_idx); 
+            }        
+ 
             hier_cc_data_ops.subtract(p_cloned_idx, p_idx, p_cloned_idx);
             
             pout << "Error in p at time " << loop_time - 0.5 * dt << ":\n"
