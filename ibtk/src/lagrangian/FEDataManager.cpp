@@ -1096,8 +1096,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
                     libMesh::Point p;
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
-                        p(d) =  patch_x_lower[d] +
-                                0.5 * patch_dx[d] * ( static_cast<double>(i_c(d) - patch_lower[d]) );
+                        p(d) =  patch_x_lower[d] + patch_dx[d] * ( static_cast<double>(i_c(d) - patch_lower[d]) );
                     }
                     static const double TOL = sqrt(std::numeric_limits<double>::epsilon());
                     const libMesh::Point ref_coords = FEInterface::inverse_map(dim, X_fe_type, elem, p, TOL, false);

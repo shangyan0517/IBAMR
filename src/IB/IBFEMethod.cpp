@@ -1511,7 +1511,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
     const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
     const std::string poisson_solver = equation_systems->parameters.get<std::string> ("Poisson_solver");
-    
+       
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
     for (unsigned int d = 0; d < NDIM; ++d) X_vars[d] = d;
