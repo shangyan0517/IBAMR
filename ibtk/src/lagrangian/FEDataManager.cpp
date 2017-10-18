@@ -1052,6 +1052,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
         {
             Elem* const elem = patch_elems[e_idx];
             const unsigned int n_node = elem->n_nodes();
+            const unsigned int F_n_dofs = elem->n_dofs(F_system.number());
             for (unsigned int d = 0; d < NDIM; ++d)
             {
                 X_dof_map_cache.dof_indices(elem, X_dof_indices[d], d);
@@ -1096,7 +1097,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
                     libMesh::Point p;
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
-                        p(d) =  patch_x_lower[d] + patch_dx[d] * ( static_cast<double>(i_c(d) - patch_lower[d]) );
+                        p(d) =  patch_x_lower[d] + 0.5*patch_dx[d] * ( static_cast<double>(i_c(d) - patch_lower[d]) );
                     }
                     static const double TOL = sqrt(std::numeric_limits<double>::epsilon());
                     const libMesh::Point ref_coords = FEInterface::inverse_map(dim, X_fe_type, elem, p, TOL, false);
@@ -1134,7 +1135,7 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
             {
                 const CellIndex<NDIM>& i_c = intersection_indices[qp];
                 typedef boost::multi_array_types::index_range range;
-                double F_qp = interpolate(qp, F_node[boost::indices[range(0, n_node)][0]], phi_F);
+                double F_qp = interpolate(qp, F_node[boost::indices[range(0, F_n_dofs)][0]], phi_F);
                 if (is_density)
                 {
                     jacobian(dX_ds, qp, X_node, dphi_X);
