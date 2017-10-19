@@ -109,7 +109,7 @@
 #include "libmesh/fe_interface.h"
 #include "libmesh/boundary_info.h"
 #include "libmesh/point_locator_base.h"
-#include "libmesh/point_locator_tree.h"
+#include "libmesh/point_locator_list.h"
 #include "libmesh/periodic_boundaries.h"
 #include "petscvec.h"
 #include "tbox/Array.h"
@@ -235,7 +235,8 @@ void assemble_ipdg_poisson(EquationSystems & es,
      
   const MeshBase & mesh = es.get_mesh();
   const BoundaryInfo& boundary_info = *mesh.boundary_info;
-  const PointLocatorTree& point_locator(mesh);
+  const PointLocatorList& point_locator(mesh);
+  point_locator.build(TREE, mesh);
   const unsigned int dim = mesh.mesh_dimension();
   LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
   const Real penalty = es.parameters.get<Real> ("ipdg_poisson_penalty");
@@ -334,11 +335,12 @@ void assemble_ipdg_poisson(EquationSystems & es,
 
   
       // The following loops over the sides of the element.
-      // If the element has no neighbor on a side then that
-      // side MUST live on a boundary of the domain.
+      // if the side is not on the physical boundary
+      // then it must either be on a periodic boundary or
+      // an interior side.
       for (unsigned int side=0; side<elem->n_sides(); side++)
         {
-          if (elem->neighbor(side) == libmesh_nullptr)
+        if (is_physical_bdry(elem, side, boundary_info, dof_map))
             {   
               // Pointer to the element face
               fe_elem_face->reinit(elem, side);
@@ -366,25 +368,24 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                   phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
                       }
                       
-                      // if this side is not on the physical boundary and a NULL
-                      // pointer, then it must be a periodic boundary
-                      const Elem * top_neighbor = elem->topological_neighbor(side,
-                                                                             mesh,
-                                                                             point_locator,
-                                                                             periodic_boundaries);
+                   
                       
                   }
               }
           }
           
-          // If the element is not on a boundary of the domain
-          // we loop over his neighbors to compute the element
-          // and neighbor boundary matrix contributions
-          else
+        // element side is either in the interior of the domain or 
+        // on a periodic boundary.
+        else
             {
-              // Store a pointer to the neighbor we are currently
-              // working on.
-              const Elem * neighbor = elem->neighbor(side);
+            // Store a pointer to the neighbor we are currently
+            // working on. if this side is not on the physical boundary and a NULL
+            // pointer, then it must be a periodic boundary
+             const Elem * neighbor = elem->topological_neighbor(side,
+                                                               mesh,
+                                                               point_locator,
+                                                               periodic_boundaries);
+            //const Elem * neighbor = elem->neighbor(side);
 
               // Get the global id of the element and the neighbor
               const unsigned int elem_id = elem->id();
