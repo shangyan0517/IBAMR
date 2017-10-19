@@ -112,7 +112,7 @@ void output_data(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                  EquationSystems* equation_systems,
                  const int iteration_num,
                  const double loop_time,
-                const string& data_dump_dirname);
+                 const string& data_dump_dirname);
 
 /*******************************************************************************
  * For each run, the input filename and restart information (if needed) must   *

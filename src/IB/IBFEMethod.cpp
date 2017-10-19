@@ -107,6 +107,10 @@
 #include "libmesh/variant_filter_iterator.h"
 #include "libmesh/vector_value.h"
 #include "libmesh/fe_interface.h"
+#include "libmesh/boundary_info.h"
+#include "libmesh/point_locator_base.h"
+#include "libmesh/point_locator_tree.h"
+#include "libmesh/periodic_boundaries.h"
 #include "petscvec.h"
 #include "tbox/Array.h"
 #include "tbox/Database.h"
@@ -230,16 +234,18 @@ void assemble_ipdg_poisson(EquationSystems & es,
   std::cout << "in IPDG assemble" << std::endl;
      
   const MeshBase & mesh = es.get_mesh();
+  const BoundaryInfo& boundary_info = *mesh.boundary_info;
+  const PointLocatorTree& point_locator(mesh);
   const unsigned int dim = mesh.mesh_dimension();
   LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
   const Real penalty = es.parameters.get<Real> ("ipdg_poisson_penalty");
   
-  
   const double epsilon = es.parameters.get<Real>("Phi_epsilon");
   const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
 
-
-  const DofMap & dof_map = ellipticdg_system.get_dof_map();
+  // had to remove the 'const' qualifier for dof_map because I need info about periodic boundaries
+  DofMap& dof_map = ellipticdg_system.get_dof_map();
+  PeriodicBoundaries * periodic_boundaries = dof_map.get_periodic_boundaries();
 
   FEType fe_type = ellipticdg_system.variable_type(0);
 
@@ -286,7 +292,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
   const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
   
   for ( ; el != end_el; ++el)
-    {
+    {  
       // Store a pointer to the element we are currently
       // working on.  This allows for nicer syntax later.
       const Elem * elem = *el;
@@ -326,44 +332,51 @@ void assemble_ipdg_poisson(EquationSystems & es,
           }
       }
 
-      // Now we address boundary conditions.
-      // We consider Dirichlet bc imposed via the interior penalty method
+  
       // The following loops over the sides of the element.
       // If the element has no neighbor on a side then that
       // side MUST live on a boundary of the domain.
       for (unsigned int side=0; side<elem->n_sides(); side++)
         {
           if (elem->neighbor(side) == libmesh_nullptr)
-            {
+            {   
               // Pointer to the element face
               fe_elem_face->reinit(elem, side);
 
               UniquePtr<Elem> elem_side (elem->build_side(side));
-              // h elemet dimension to compute the interior penalty parameter
+              // h element dimension to compute the interior penalty parameter
               const unsigned int elem_b_order = static_cast<unsigned int> (fe_elem_face->get_order());
               const double h_elem = elem->volume()/elem_side->volume() * 1./pow(elem_b_order, 2.);
-
+                         
+              
               for (unsigned int qp=0; qp<qface.n_points(); qp++)
-                {
+              {
                   for (unsigned int i=0; i<n_dofs; i++)
-                    {
+                  {
                       // Matrix contribution
                       for (unsigned int j=0; j<n_dofs; j++)
-                        {
+                      {
                           // stability
                           Ke(i,j) += JxW_face[qp] * penalty/h_elem * phi_face[i][qp] * phi_face[j][qp];
-
+                          
                           // consistency
                           Ke(i,j) -=
-                            JxW_face[qp] *
-                            (phi_face[i][qp] * (dphi_face[j][qp]*qface_normals[qp]) +
-                             phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
-                        }
-
+                                  JxW_face[qp] *
+                                  (phi_face[i][qp] * (dphi_face[j][qp]*qface_normals[qp]) +
+                                  phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
+                      }
+                      
+                      // if this side is not on the physical boundary and a NULL
+                      // pointer, then it must be a periodic boundary
+                      const Elem * top_neighbor = elem->topological_neighbor(side,
+                                                                             mesh,
+                                                                             point_locator,
+                                                                             periodic_boundaries);
+                      
                   }
-                }
-            }
-
+              }
+          }
+          
           // If the element is not on a boundary of the domain
           // we loop over his neighbors to compute the element
           // and neighbor boundary matrix contributions
