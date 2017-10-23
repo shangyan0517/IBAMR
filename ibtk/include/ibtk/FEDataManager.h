@@ -400,12 +400,13 @@ public:
      * grid.  This function contains a switch to handle different types of 
       * data, like side centered, cell centered, etc.
      */
-    void FEDataManager::prolongData( int f_data_idx,
-                           libMesh::NumericVector<double>& F_vec,
-                           libMesh::NumericVector<double>& X_vec,
-                           const std::string& system_name,
-                           bool is_density,
-                           bool accumulate_on_grid);
+    void 
+    prolongData(int f_data_idx,
+                libMesh::NumericVector<double>& F_vec,
+                libMesh::NumericVector<double>& X_vec,
+                const std::string& system_name,
+                bool is_density,
+                bool accumulate_on_grid);
 
     
    

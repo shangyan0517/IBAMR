@@ -579,12 +579,12 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                 NumericVector<double>* Phi_ghost_vec = Phi_system.current_local_solution.get();
                 Phi_vec->localize(*Phi_ghost_vec);
                 const int phi_idx = ib_method_ops->phi_current_idx;
-                fe_data_manager->prolongDataCellCentered(phi_idx,
-                                                         *Phi_ghost_vec,
-                                                         *X_ghost_vec,
-                                                         IBFEMethod::PHI_SYSTEM_NAME,
-                                                         false,
-                                                         false);
+                fe_data_manager->prolongData(phi_idx,
+                                             *Phi_ghost_vec,
+                                             *X_ghost_vec,
+                                             IBFEMethod::PHI_SYSTEM_NAME,
+                                             false,
+                                             false);
                 
                 const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
                 std::cout << "volume = " <<  volume << std::endl;

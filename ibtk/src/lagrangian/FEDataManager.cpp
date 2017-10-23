@@ -757,21 +757,21 @@ FEDataManager::prolongData(const int f_data_idx,
     // call the correct helper function
     if(cc_data)
     {
-        FEDataManager::prolongData_cell(const int f_data_idx,
-                           NumericVector<double>& F_vec,
-                           NumericVector<double>& X_vec,
-                           const std::string& system_name,
-                           const bool is_density,
-                           const bool accumulate_on_grid);
+        FEDataManager::prolongData_cell(f_data_idx,
+                                        F_vec,
+                                        X_vec,
+                                        system_name,
+                                        is_density,
+                                        accumulate_on_grid);
     }
     if(sc_data)
     {
-        FEDataManager::prolongData_side(const int f_data_idx,
-                           NumericVector<double>& F_vec,
-                           NumericVector<double>& X_vec,
-                           const std::string& system_name,
-                           const bool is_density,
-                           const bool accumulate_on_grid);
+        FEDataManager::prolongData_side(f_data_idx,
+                                        F_vec,
+                                        X_vec,
+                                        system_name,
+                                        is_density,
+                                        accumulate_on_grid);
     }
     
 } // prolongData
@@ -1006,7 +1006,7 @@ FEDataManager::prolongData_cell(const int f_data_idx,
                                        const bool is_density,
                                        const bool accumulate_on_grid)
 {
-    IBTK_TIMER_START(t_prolong_data_cell;
+    IBTK_TIMER_START(t_prolong_data_cell);
 
 
     // Extract the mesh.
