@@ -157,8 +157,8 @@ namespace
 static Timer* t_reinit_element_mappings;
 static Timer* t_build_ghosted_solution_vector;
 static Timer* t_spread;
-static Timer* t_prolong_data;
-static Timer* t_prolong_data_cell_centered;
+static Timer* t_prolong_data_side;
+static Timer* t_prolong_data_cell;
 static Timer* t_interp;
 static Timer* t_interp_weighted;
 static Timer* t_restrict_data;
@@ -734,7 +734,7 @@ FEDataManager::spread(const int f_data_idx,
     return;
 } // spread
 
-void
+void 
 FEDataManager::prolongData(const int f_data_idx,
                            NumericVector<double>& F_vec,
                            NumericVector<double>& X_vec,
@@ -742,7 +742,50 @@ FEDataManager::prolongData(const int f_data_idx,
                            const bool is_density,
                            const bool accumulate_on_grid)
 {
-    IBTK_TIMER_START(t_prolong_data);
+    
+    VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
+    
+    // Determine the type of data centering. Either side or cell centered.
+    Pointer<hier::Variable<NDIM> > f_var;
+    var_db->mapIndexToVariable(f_data_idx, f_var);
+    Pointer<CellVariable<NDIM, double> > f_cc_var = f_var;
+    Pointer<SideVariable<NDIM, double> > f_sc_var = f_var;
+    const bool cc_data = f_cc_var;
+    const bool sc_data = f_sc_var;
+    TBOX_ASSERT(cc_data || sc_data);
+    
+    // call the correct helper function
+    if(cc_data)
+    {
+        FEDataManager::prolongData_cell(const int f_data_idx,
+                           NumericVector<double>& F_vec,
+                           NumericVector<double>& X_vec,
+                           const std::string& system_name,
+                           const bool is_density,
+                           const bool accumulate_on_grid);
+    }
+    if(sc_data)
+    {
+        FEDataManager::prolongData_side(const int f_data_idx,
+                           NumericVector<double>& F_vec,
+                           NumericVector<double>& X_vec,
+                           const std::string& system_name,
+                           const bool is_density,
+                           const bool accumulate_on_grid);
+    }
+    
+} // prolongData
+
+
+void
+FEDataManager::prolongData_side(const int f_data_idx,
+                           NumericVector<double>& F_vec,
+                           NumericVector<double>& X_vec,
+                           const std::string& system_name,
+                           const bool is_density,
+                           const bool accumulate_on_grid)
+{
+    IBTK_TIMER_START(t_prolong_data_side);
 
     // NOTE #1: This routine is sepcialized for a staggered-grid Eulerian
     // discretization.  It should be straightforward to generalize it to work
@@ -950,20 +993,20 @@ FEDataManager::prolongData(const int f_data_idx,
     VecRestoreArray(X_local_vec, &X_local_soln);
     VecGhostRestoreLocalForm(X_global_vec, &X_local_vec);
 
-    IBTK_TIMER_STOP(t_prolong_data);
+    IBTK_TIMER_STOP(t_prolong_data_side);
     return;
-} // prolongData
+} // prolongData_side
 
 
 void
-FEDataManager::prolongDataCellCentered(const int f_data_idx,
+FEDataManager::prolongData_cell(const int f_data_idx,
                                        NumericVector<double>& F_vec,
                                        NumericVector<double>& X_vec,
                                        const std::string& system_name,
                                        const bool is_density,
                                        const bool accumulate_on_grid)
 {
-    IBTK_TIMER_START(t_prolong_data_cell_centered);
+    IBTK_TIMER_START(t_prolong_data_cell;
 
 
     // Extract the mesh.
@@ -1152,9 +1195,9 @@ FEDataManager::prolongDataCellCentered(const int f_data_idx,
     VecRestoreArray(X_local_vec, &X_local_soln);
     VecGhostRestoreLocalForm(X_global_vec, &X_local_vec);
 
-    IBTK_TIMER_STOP(t_prolong_data_cell_centered);
+    IBTK_TIMER_STOP(t_prolong_data_cell);
     return;
-} // prolongDataCellCentered
+} // prolongData_cell
 
 
 void
@@ -2309,8 +2352,8 @@ FEDataManager::FEDataManager(const std::string& object_name,
         t_build_ghosted_solution_vector =
             TimerManager::getManager()->getTimer("IBTK::FEDataManager::buildGhostedSolutionVector()");
         t_spread = TimerManager::getManager()->getTimer("IBTK::FEDataManager::spread()");
-        t_prolong_data = TimerManager::getManager()->getTimer("IBTK::FEDataManager::prolongData()");
-        t_prolong_data_cell_centered = TimerManager::getManager()->getTimer("IBTK::FEDataManager::prolongDataCellCentered()");
+        t_prolong_data_side = TimerManager::getManager()->getTimer("IBTK::FEDataManager::prolongData_side()");
+        t_prolong_data_cell = TimerManager::getManager()->getTimer("IBTK::FEDataManager::prolongData_cell()");
         t_interp_weighted = TimerManager::getManager()->getTimer("IBTK::FEDataManager::interpWeighted()");
         t_interp = TimerManager::getManager()->getTimer("IBTK::FEDataManager::interp()");
         t_restrict_data = TimerManager::getManager()->getTimer("IBTK::FEDataManager::restrictData()");

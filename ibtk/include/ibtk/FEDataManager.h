@@ -395,28 +395,20 @@ public:
                 RobinPhysBdryPatchStrategy* f_phys_bdry_op,
                 double fill_data_time);
 
-    /*!
+     /*!
      * \brief Prolong a value or a density from the FE mesh to the Cartesian
-     * grid.
+     * grid.  This function contains a switch to handle different types of 
+      * data, like side centered, cell centered, etc.
      */
-    void prolongData(int f_data_idx,
-                     libMesh::NumericVector<double>& F,
-                     libMesh::NumericVector<double>& X,
-                     const std::string& system_name,
-                     bool is_density = true,
-                     bool accumulate_on_grid = true);
-    
-        /*!
-     * \brief Prolong a value or a density from the FE mesh to the Cartesian
-     * grid with Cell Centered degrees of freedom
-     */
-    void prolongDataCellCentered(int f_data_idx,
-                                 libMesh::NumericVector<double>& F,
-                                 libMesh::NumericVector<double>& X,
-                                 const std::string& system_name,
-                                 bool is_density = true,
-                                 bool accumulate_on_grid = true);
+    void FEDataManager::prolongData( int f_data_idx,
+                           libMesh::NumericVector<double>& F_vec,
+                           libMesh::NumericVector<double>& X_vec,
+                           const std::string& system_name,
+                           bool is_density,
+                           bool accumulate_on_grid);
 
+    
+   
     /*!
      * \brief Interpolate a value from the Cartesian grid to the FE mesh using
      * the default interpolation spec. This interpolation function does NOT do
@@ -719,6 +711,29 @@ private:
                                 const std::vector<libMesh::Elem*>& active_elems,
                                 const std::string& system_name);
 
+     /*!
+     * \brief Prolong a side centered value or a density from the FE mesh to the Cartesian
+     * grid.
+     */
+    void prolongData_side(int f_data_idx,
+                     libMesh::NumericVector<double>& F,
+                     libMesh::NumericVector<double>& X,
+                     const std::string& system_name,
+                     bool is_density = true,
+                     bool accumulate_on_grid = true);
+    
+        /*!
+     * \brief Prolong a value or a density from the FE mesh to the Cartesian
+     * grid with Cell Centered degrees of freedom
+     */
+    void prolongData_cell(int f_data_idx,
+                                 libMesh::NumericVector<double>& F,
+                                 libMesh::NumericVector<double>& X,
+                                 const std::string& system_name,
+                                 bool is_density = true,
+                                 bool accumulate_on_grid = true);
+
+    
     /*!
      * Read object state from the restart file and initialize class data
      * members.  The database from which the restart data is read is determined
