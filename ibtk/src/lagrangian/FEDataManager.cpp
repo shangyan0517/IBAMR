@@ -1009,6 +1009,8 @@ FEDataManager::prolongData_cell(const int f_data_idx,
     IBTK_TIMER_START(t_prolong_data_cell);
 
 
+    std::cout << "prolonging cell-centered data from system " << system_name << std::endl;
+    
     // Extract the mesh.
     const MeshBase& mesh = d_es->get_mesh();
     const unsigned int dim = mesh.mesh_dimension();
@@ -1137,15 +1139,16 @@ FEDataManager::prolongData_cell(const int f_data_idx,
                 const CellIndex<NDIM>& i_c = b();
                 if ( num_intersections(i_c) == 0 && patch_box.contains(i_c) )
                 {
-                    libMesh::Point p;
+                    libMesh::Point p; 
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
-                        p(d) =  patch_x_lower[d] + 0.5*patch_dx[d] * ( static_cast<double>(i_c(d) - patch_lower[d]) );
+                        p(d) =  patch_x_lower[d] + 0.5*patch_dx[d] * ( static_cast<double>(i_c(d) - patch_lower[d] + 1) );
                     }
                     static const double TOL = sqrt(std::numeric_limits<double>::epsilon());
                     const libMesh::Point ref_coords = FEInterface::inverse_map(dim, X_fe_type, elem, p, TOL, false);
                     if (FEInterface::on_reference_element(ref_coords, elem->type(), TOL))
                     {
+                        std::cout << "help 2" << std::endl;
                         intersection_ref_coords.push_back(ref_coords);
                         intersection_indices.push_back(i_c);
                         num_intersections(i_c) += 1;
@@ -1162,6 +1165,8 @@ FEDataManager::prolongData_cell(const int f_data_idx,
 
             // If there are no intersection points, then continue on to the next
             // element.
+            if (!intersection_ref_coords.empty()) {std::cout << "intersections have been found!" << std::endl;}
+            
             if (intersection_ref_coords.empty()) continue;
 
             // Evaluate the Lagrangian quantity at the Eulerian grid point and

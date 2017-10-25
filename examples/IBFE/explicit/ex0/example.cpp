@@ -256,7 +256,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
         {
             ib_method_ops->registerStressNormalizationPart();
-        }        
+        }
         
         // Set up post processor to recover computed stresses.
         Pointer<IBFEPostProcessor> ib_post_processor =
@@ -367,6 +367,9 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         const int p_idx = var_db->mapVariableAndContextToIndex(p_var, p_ctx);
         const int p_cloned_idx = var_db->registerClonedPatchDataIndex(p_var, p_idx);
         visit_data_writer->registerPlotQuantity("P error", "SCALAR", p_cloned_idx);
+        
+        // so we can see what Phi looks like, interpolated on the Cartesian grid
+        visit_data_writer->registerPlotQuantity("Eulerian Phi", "SCALAR", ib_method_ops->phi_current_idx);
         
         const int coarsest_ln = 0;
         const int finest_ln = patch_hierarchy->getFinestLevelNumber();
