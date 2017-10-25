@@ -1190,6 +1190,7 @@ FEDataManager::prolongData_cell(const int f_data_idx,
                     F_qp /= std::abs(dX_ds.det());
                 }
                 (*f_data)(i_c) += F_qp / static_cast<double>( num_intersections(i_c) );
+                std::cout << (*f_data)(i_c) << std::endl;
             }
         }
     }
