@@ -370,6 +370,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         
         // so we can see what Phi looks like, interpolated on the Cartesian grid
         visit_data_writer->registerPlotQuantity("Eulerian Phi", "SCALAR", ib_method_ops->phi_current_idx);
+        const int phi_cloned_idx = var_db->registerClonedPatchDataIndex(ib_method_ops->phi_var, ib_method_ops->phi_current_idx);
         
         const int coarsest_ln = 0;
         const int finest_ln = patch_hierarchy->getFinestLevelNumber();
@@ -377,6 +378,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         {
             patch_hierarchy->getPatchLevel(ln)->allocatePatchData(u_cloned_idx);
             patch_hierarchy->getPatchLevel(ln)->allocatePatchData(p_cloned_idx);
+            patch_hierarchy->getPatchLevel(ln)->allocatePatchData(phi_cloned_idx);
         }
 
         // Write out initial visualization data.
@@ -428,6 +430,40 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
 
+            // get a representation of the stress normalization function Phi on the Cartesian grid.
+            System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
+            NumericVector<double>* X_vec = X_system.solution.get();
+            NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
+            X_vec->localize(*X_ghost_vec);
+            
+            HierarchyMathOps hier_math_ops("HierarchyMathOps", patch_hierarchy);
+            hier_math_ops.setPatchHierarchy(patch_hierarchy);
+            hier_math_ops.resetLevels(coarsest_ln, finest_ln);
+            const double volume = hier_math_ops.getVolumeOfPhysicalDomain();
+            const int wgt_cc_idx = hier_math_ops.getCellWeightPatchDescriptorIndex();
+            const int wgt_sc_idx = hier_math_ops.getSideWeightPatchDescriptorIndex();
+            
+            if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
+            {
+                HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
+                System& Phi_system = equation_systems->get_system<System>(IBFEMethod::PHI_SYSTEM_NAME);
+                NumericVector<double>* Phi_vec = Phi_system.solution.get();
+                NumericVector<double>* Phi_ghost_vec = Phi_system.current_local_solution.get();
+                Phi_vec->localize(*Phi_ghost_vec);
+                const int phi_idx = ib_method_ops->phi_current_idx;
+                fe_data_manager->prolongData(phi_idx,
+                                             *Phi_ghost_vec,
+                                             *X_ghost_vec,
+                                             IBFEMethod::PHI_SYSTEM_NAME,
+                                             false,
+                                             false);
+            
+                const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
+                std::cout << "volume = " <<  volume << std::endl;
+                std::cout << "phi_mean = " << phi_mean << std::endl; 
+                hier_cc_data_ops.addScalar(phi_cloned_idx, phi_idx, -phi_mean);
+            }
+                
             // At specified intervals, write visualization and restart files,
             // print out timer data, and store hierarchy data for post
             // processing.
@@ -473,10 +509,6 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             
             // Compute the volume of the structure.
             double J_integral = 0.0;
-            System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
-            NumericVector<double>* X_vec = X_system.solution.get();
-            NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
-            X_vec->localize(*X_ghost_vec);
             DofMap& X_dof_map = X_system.get_dof_map();
             std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
             AutoPtr<FEBase> fe(FEBase::build(NDIM, X_dof_map.variable_type(0)));
@@ -529,13 +561,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             u_init->setDataOnPatchHierarchy(u_cloned_idx, u_var, patch_hierarchy, loop_time);
             p_init->setDataOnPatchHierarchy(p_cloned_idx, p_var, patch_hierarchy, loop_time - 0.5 * dt);
 
-            HierarchyMathOps hier_math_ops("HierarchyMathOps", patch_hierarchy);
-            hier_math_ops.setPatchHierarchy(patch_hierarchy);
-            hier_math_ops.resetLevels(coarsest_ln, finest_ln);
-            const double volume = hier_math_ops.getVolumeOfPhysicalDomain();
-            const int wgt_cc_idx = hier_math_ops.getCellWeightPatchDescriptorIndex();
-            const int wgt_sc_idx = hier_math_ops.getSideWeightPatchDescriptorIndex();
-
+          
             Pointer<CellVariable<NDIM, double> > u_cc_var = u_var;
             if (u_cc_var)
             {
@@ -567,35 +593,18 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                      u_err[1] = hier_sc_data_ops.L2Norm(u_cloned_idx, wgt_sc_idx);
                      u_err[2] = hier_sc_data_ops.maxNorm(u_cloned_idx, wgt_sc_idx);
             }
-
+            
             HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
             const double p_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_idx, p_idx, -p_mean);
             const double p_cloned_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_cloned_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_cloned_idx, p_cloned_idx, -p_cloned_mean);
             
-            // compute projection of pressure-like field phi onto Cartesian grid.
+            // add in computed pressure-like field from harmonic problem
             if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
             {
-                System& Phi_system = equation_systems->get_system<System>(IBFEMethod::PHI_SYSTEM_NAME);
-                NumericVector<double>* Phi_vec = Phi_system.solution.get();
-                NumericVector<double>* Phi_ghost_vec = Phi_system.current_local_solution.get();
-                Phi_vec->localize(*Phi_ghost_vec);
-                const int phi_idx = ib_method_ops->phi_current_idx;
-                fe_data_manager->prolongData(phi_idx,
-                                             *Phi_ghost_vec,
-                                             *X_ghost_vec,
-                                             IBFEMethod::PHI_SYSTEM_NAME,
-                                             false,
-                                             false);
-                
-                const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
-                std::cout << "volume = " <<  volume << std::endl;
-                std::cout << "phi_mean = " << phi_mean << std::endl; 
-                hier_cc_data_ops.addScalar(phi_idx, phi_idx, -phi_mean);
-                // add in computed pressure-like field from harmonic problem
-                hier_cc_data_ops.add(p_idx, p_idx, phi_idx); 
-            }        
+                hier_cc_data_ops.add(p_idx, p_idx, phi_cloned_idx);   
+            } 
  
             hier_cc_data_ops.subtract(p_cloned_idx, p_idx, p_cloned_idx);
             
