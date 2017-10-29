@@ -1097,7 +1097,6 @@ FEDataManager::prolongData_cell(const int f_data_idx,
         {
             Elem* const elem = patch_elems[e_idx];
             const unsigned int n_node = elem->n_nodes();
-       //     const unsigned int F_n_dofs = elem->n_dofs(F_system.number());
             for (unsigned int d = 0; d < NDIM; ++d)
             {
                 X_dof_map_cache.dof_indices(elem, X_dof_indices[d], d);
@@ -1148,7 +1147,6 @@ FEDataManager::prolongData_cell(const int f_data_idx,
                     const libMesh::Point ref_coords = FEInterface::inverse_map(dim, X_fe_type, elem, p, TOL, false);
                     if (FEInterface::on_reference_element(ref_coords, elem->type(), TOL))
                     {
-                        std::cout << "help 2" << std::endl;
                         intersection_ref_coords.push_back(ref_coords);
                         intersection_indices.push_back(i_c);
                         num_intersections(i_c) += 1;
@@ -1165,8 +1163,6 @@ FEDataManager::prolongData_cell(const int f_data_idx,
 
             // If there are no intersection points, then continue on to the next
             // element.
-            if (!intersection_ref_coords.empty()) {std::cout << "intersections have been found!" << std::endl;}
-            
             if (intersection_ref_coords.empty()) continue;
 
             // Evaluate the Lagrangian quantity at the Eulerian grid point and
@@ -1190,7 +1186,6 @@ FEDataManager::prolongData_cell(const int f_data_idx,
                     F_qp /= std::abs(dX_ds.det());
                 }
                 (*f_data)(i_c) += F_qp / static_cast<double>( num_intersections(i_c) );
-                std::cout << (*f_data)(i_c) << std::endl;
             }
         }
     }
