@@ -372,6 +372,10 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         visit_data_writer->registerPlotQuantity("Eulerian Phi", "SCALAR", ib_method_ops->phi_current_idx);
         const int phi_cloned_idx = var_db->registerClonedPatchDataIndex(ib_method_ops->phi_var, ib_method_ops->phi_current_idx);
         
+        // make an index so we can look at the sum of the pressure and Phi
+        const int p_plus_phi_idx = var_db->registerClonedPatchDataIndex(ib_method_ops->phi_var, ib_method_ops->phi_current_idx);
+        visit_data_writer->registerPlotQuantity("P plus Phi", "SCALAR", p_plus_phi_idx);
+        
         const int coarsest_ln = 0;
         const int finest_ln = patch_hierarchy->getFinestLevelNumber();
         for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
@@ -379,6 +383,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             patch_hierarchy->getPatchLevel(ln)->allocatePatchData(u_cloned_idx);
             patch_hierarchy->getPatchLevel(ln)->allocatePatchData(p_cloned_idx);
             patch_hierarchy->getPatchLevel(ln)->allocatePatchData(phi_cloned_idx);
+            patch_hierarchy->getPatchLevel(ln)->allocatePatchData(p_plus_phi_idx);
         }
 
         // Write out initial visualization data.
@@ -462,6 +467,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                 std::cout << "volume = " <<  volume << std::endl;
                 std::cout << "phi_mean = " << phi_mean << std::endl; 
                 hier_cc_data_ops.addScalar(phi_cloned_idx, phi_idx, -phi_mean);
+                hier_cc_data_ops.add(p_plus_phi_idx, phi_idx, p_idx);
             }
                 
             // At specified intervals, write visualization and restart files,
