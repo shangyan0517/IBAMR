@@ -372,7 +372,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         visit_data_writer->registerPlotQuantity("Eulerian Phi", "SCALAR", ib_method_ops->phi_current_idx);
         const int phi_cloned_idx = var_db->registerClonedPatchDataIndex(ib_method_ops->phi_var, ib_method_ops->phi_current_idx);
         
-        // make an index so we can look at the sum of the pressure and Phi
+        // make an index so we can look at the sum of the pressure-like variable P and stress normalization Phi
         const int p_plus_phi_idx = var_db->registerClonedPatchDataIndex(ib_method_ops->phi_var, ib_method_ops->phi_current_idx);
         visit_data_writer->registerPlotQuantity("P plus Phi", "SCALAR", p_plus_phi_idx);
         
