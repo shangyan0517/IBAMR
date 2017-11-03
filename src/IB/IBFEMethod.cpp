@@ -3129,7 +3129,7 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
         d_do_log = db->getBool("enable_logging");
     
     // get info for stress normalization
-    if (db->isDouble("epsilon")) d_epsilon = db->getDouble("epsilon");
+    if (db->isDouble("Phi_epsilon")) d_epsilon = db->getDouble("Phi_epsilon");
     poisson_solver = db->getString("poisson_solver");
     ipdg_poisson_penalty = db->getDouble("ipdg_poisson_penalty");
     cg_poisson_penalty = db->getDouble("cg_poisson_penalty");
