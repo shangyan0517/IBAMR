@@ -2031,7 +2031,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
 
     // Loop over the elements to compute the right-hand side vector.
     TensorValue<double> PP, FF, FF_inv_trans;
-    VectorValue<double> F, F_b, F_s, F_qp, n, x;
+    VectorValue<double> P, F, F_b, F_s, F_qp, n, x;
     boost::multi_array<double, 2> X_node;
     boost::multi_array<double, 1> Phi_node;
     const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
@@ -2060,6 +2060,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
             const double Phi =
                 Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
 
+            // for volumetric stress normalization term
             if (Phi_vec)
             {
                 // Compute the value of the first Piola-Kirchhoff stress tensor
@@ -2129,13 +2130,12 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                 const double J = std::abs(FF.det());
                 tensor_inverse_transpose(FF_inv_trans, FF, NDIM);
                 n = (FF_inv_trans * normal_face[qp]).unit();
-
-                const double Phi =
-                Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
-                
                 F.zero();
                 
-                if (Phi_vec)
+                const double Phi =
+                Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
+                // for surface stress normalization term
+                if (Phi_vec && d_split_normal_force)
                 {
                     // Compute the value of the first Piola-Kirchhoff stress tensor
                     // at the quadrature point and add the corresponding forces to
@@ -2143,15 +2143,14 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                     P = -J * Phi * FF_inv_trans * normal_face[qp];
                     for (unsigned int k = 0; k < n_basis; ++k)
                     {
-                        F_qp = P * phi_face[k][qp] * JxW[qp];
+                        F_qp = P * phi_face[k][qp] * JxW_face[qp];
                         for (unsigned int i = 0; i < NDIM; ++i)
                         {
                             G_rhs_e[i](k) += F_qp(i);
                         }
                     }
                 }
-                
-                
+                        
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
                 {
                     // Compute the value of the pressure at the quadrature
