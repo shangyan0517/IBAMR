@@ -2076,7 +2076,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                     }
                 }
             }
-
+             
             if (d_lag_body_force_fcn_data[part].fcn)
             {
                 // Compute the value of the body force at the quadrature
@@ -2132,7 +2132,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                 n = (FF_inv_trans * normal_face[qp]).unit();
                 F.zero();
                 
-                const double Phi =
+             /*   const double Phi =
                 Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
                 // for surface stress normalization term
                 if (Phi_vec && d_split_normal_force)
@@ -2150,7 +2150,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                         }
                     }
                 }
-                
+              */ 
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
                 {
                     // Compute the value of the pressure at the quadrature

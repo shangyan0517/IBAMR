@@ -11,7 +11,7 @@ NFINEST = (REF_RATIO^(MAX_LEVELS - 1))*N       // effective number of grid cells
 DX0 = L/N                                      // mesh width on coarsest grid level
 DX  = L/NFINEST                                // mesh width on finest   grid level
 MFAC = 4.0                                     // ratio of Lagrangian mesh width to Cartesian mesh width
-ELEM_TYPE = "QUAD9"                            // type of element to use for structure discretization
+ELEM_TYPE = "QUAD4"                            // type of element to use for structure discretization
 CONVERGENCE_STUDY = TRUE                      // indicate whether we are performing a convergence study or not;
                                                // if so, attempt to make "nested" structural meshes
 
@@ -49,7 +49,7 @@ SOLVER_TYPE                = "STAGGERED"       // the fluid solver to use (STAGG
 CFL_MAX                    = 0.3               // maximum CFL number
 DT                         = 0.25*DX           // maximum timestep size
 START_TIME                 = 0.0e0             // initial simulation time
-END_TIME                   = 3*DT               // final simulation time
+END_TIME                   = 0.01              // final simulation time
 GROW_DT                    = 2.0e0             // growth factor for timesteps
 NUM_CYCLES                 = 1                 // number of cycles of fixed-point iteration
 CONVECTIVE_TS_TYPE         = "ADAMS_BASHFORTH" // convective time stepping type
@@ -66,7 +66,7 @@ OUTPUT_F                   = TRUE
 OUTPUT_OMEGA               = TRUE
 OUTPUT_DIV_U               = TRUE
 ENABLE_LOGGING             = TRUE
-ELIMINATE_PRESSURE_JUMPS   = TRUE
+ELIMINATE_PRESSURE_JUMPS   = FALSE
 
 // collocated solver parameters
 PROJECTION_METHOD_TYPE = "PRESSURE_UPDATE"

@@ -147,7 +147,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         Pointer<AppInitializer> app_initializer = new AppInitializer(argc, argv, "IB.log");
         Pointer<Database> input_db = app_initializer->getInputDatabase();
         
-        // change DX and related parameters in the input file if this is a convergence study        
+        // change DX and dependent parameters in the input file if this is a convergence study        
         if (input_db->getBoolWithDefault("CONVERGENCE_STUDY", false))
         {
             
@@ -159,15 +159,34 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             int NFINEST = (pow(REF_RATIO,MAX_LEVELS - 1))*Nnew;   
             double DX0 = L/(double)Nnew;                                  
             double DX  = L/(double)NFINEST;
+            double dtdx_ratio = input_db->getDouble("DT")/ input_db->getDouble("DX");
             
             input_db->putInteger("N", Nnew);
             input_db->putInteger("NFINEST", NFINEST);
             input_db->putDouble("DX0", DX0);
             input_db->putDouble("DX", DX);
+            input_db->putDouble("DT", dtdx_ratio*DX);
+
+            // get Cartesian geometry database 
+            Pointer<Database> cartesian_db = app_initializer->getComponentDatabase("CartesianGeometry");
+            hier::Index<NDIM> lower(0,0);
+            hier::Index<NDIM> upper(Nnew-1,Nnew-1);
+            hier::Box<NDIM> foo_Box(lower,upper);
+            hier::BoxList<NDIM> foo_BoxList(foo_Box);
+            hier::BoxArray<NDIM> domain(foo_BoxList);
+            cartesian_db->putDatabaseBoxArray("domain_boxes", domain);
             
+            // get different integrator databases
+            Pointer<Database> integrator1_db = app_initializer->getComponentDatabase("IBHierarchyIntegrator");
+            integrator1_db->putDouble("dt_max", dtdx_ratio*DX);
+                        
+            Pointer<Database> integrator2_db = app_initializer->getComponentDatabase("INSCollocatedHierarchyIntegrator");
+            integrator2_db->putDouble("dt_max", dtdx_ratio*DX);
+            
+            Pointer<Database> integrator3_db = app_initializer->getComponentDatabase("INSStaggeredHierarchyIntegrator");
+            integrator3_db->putDouble("dt_max", dtdx_ratio*DX);
         }
-        
-        
+                
         // Get various standard options set in the input file.
         const bool dump_viz_data = app_initializer->dumpVizData();
         const int viz_dump_interval = app_initializer->getVizDumpInterval();
@@ -431,7 +450,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.open("volume.curve", ios_base::out | ios_base::trunc);
-            error_stream.open("IBFE_errors.dat", ios_base::out | ios_base::app);
+            error_stream.open("errors.dat", ios_base::out | ios_base::app);
         }
 
         // Main time step loop.
@@ -442,24 +461,24 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             iteration_num = time_integrator->getIntegratorStep();
             loop_time = time_integrator->getIntegratorTime();
 
-            /*
+            
             pout << "\n";
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "At beginning of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";
-             */ 
+            
             
             dt = time_integrator->getMaximumTimeStepSize();
             time_integrator->advanceHierarchy(dt);
             loop_time += dt;
 
-            /*
+            
             pout << "\n";
             pout << "At end       of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
-             */
+            
              
             // get a representation of the stress normalization function Phi on the Cartesian grid.
             System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
