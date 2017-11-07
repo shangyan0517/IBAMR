@@ -2031,7 +2031,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
 
     // Loop over the elements to compute the right-hand side vector.
     TensorValue<double> PP, FF, FF_inv_trans;
-    VectorValue<double> P, F, F_b, F_s, F_qp, n, x;
+    VectorValue<double> PPsurface, F, F_b, F_s, F_qp, n, x;
     boost::multi_array<double, 2> X_node;
     boost::multi_array<double, 1> Phi_node;
     const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
@@ -2140,17 +2140,17 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                     // Compute the value of the first Piola-Kirchhoff stress tensor
                     // at the quadrature point and add the corresponding forces to
                     // the right-hand-side vector.
-                    P = -J * Phi * FF_inv_trans * normal_face[qp];
+                    PPsurface = -J * Phi * FF_inv_trans * normal_face[qp];
                     for (unsigned int k = 0; k < n_basis; ++k)
                     {
-                        F_qp = P * phi_face[k][qp] * JxW_face[qp];
+                        F_qp = PPsurface * phi_face[k][qp] * JxW_face[qp];
                         for (unsigned int i = 0; i < NDIM; ++i)
                         {
                             G_rhs_e[i](k) += F_qp(i);
                         }
                     }
                 }
-                        
+                
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
                 {
                     // Compute the value of the pressure at the quadrature
@@ -2195,12 +2195,12 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                     F += F_s;
                 }
 
-                // Remote the normal component of the boundary force when needed.
+                // Remove the normal component of the boundary force when needed.
                 if (!integrate_normal_force) F -= (F * n) * n;
 
-                // Remote the tangential component of the boundary force when needed.
+                // Remove the tangential component of the boundary force when needed.
                 if (!integrate_tangential_force) F -= (F - (F * n) * n);
-
+                
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int k = 0; k < n_basis; ++k)
                 {

@@ -133,21 +133,41 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
     SAMRAI_MPI::setCommunicator(PETSC_COMM_WORLD);
     SAMRAI_MPI::setCallAbortInSerialInsteadOfExit();
     SAMRAIManager::startup();
-
+        
     // resize u_err and p_err to hold error data
     u_err.resize(3);
     p_err.resize(3);
+           
     
-            
-
     { // cleanup dynamically allocated objects prior to shutdown
-
+           
         // Parse command line options, set some standard options from the input
         // file, initialize the restart database (if this is a restarted run),
         // and enable file logging.
         Pointer<AppInitializer> app_initializer = new AppInitializer(argc, argv, "IB.log");
         Pointer<Database> input_db = app_initializer->getInputDatabase();
-
+        
+        // change DX and related parameters in the input file if this is a convergence study        
+        if (input_db->getBoolWithDefault("CONVERGENCE_STUDY", false))
+        {
+            
+            int Nnew = 0; istringstream(argv[2]) >> Nnew;
+            int MAX_LEVELS = input_db->getInteger("MAX_LEVELS");
+            int REF_RATIO = input_db->getInteger("REF_RATIO");
+            double L = input_db->getDouble("L");
+            
+            int NFINEST = (pow(REF_RATIO,MAX_LEVELS - 1))*Nnew;   
+            double DX0 = L/(double)Nnew;                                  
+            double DX  = L/(double)NFINEST;
+            
+            input_db->putInteger("N", Nnew);
+            input_db->putInteger("NFINEST", NFINEST);
+            input_db->putDouble("DX0", DX0);
+            input_db->putDouble("DX", DX);
+            
+        }
+        
+        
         // Get various standard options set in the input file.
         const bool dump_viz_data = app_initializer->dumpVizData();
         const int viz_dump_interval = app_initializer->getVizDumpInterval();
@@ -407,9 +427,11 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         
         // Open streams to save volume of structure.
         ofstream volume_stream;
+        ofstream error_stream;
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.open("volume.curve", ios_base::out | ios_base::trunc);
+            error_stream.open("IBFE_errors.dat", ios_base::out | ios_base::app);
         }
 
         // Main time step loop.
@@ -420,21 +442,25 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             iteration_num = time_integrator->getIntegratorStep();
             loop_time = time_integrator->getIntegratorTime();
 
+            /*
             pout << "\n";
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "At beginning of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";
-
+             */ 
+            
             dt = time_integrator->getMaximumTimeStepSize();
             time_integrator->advanceHierarchy(dt);
             loop_time += dt;
 
+            /*
             pout << "\n";
             pout << "At end       of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
-
+             */
+             
             // get a representation of the stress normalization function Phi on the Cartesian grid.
             System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
             NumericVector<double>* X_vec = X_system.solution.get();
@@ -464,8 +490,8 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                                              false);
             
                 const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
-                std::cout << "volume = " <<  volume << std::endl;
-                std::cout << "phi_mean = " << phi_mean << std::endl; 
+          //      std::cout << "volume = " <<  volume << std::endl;
+          //      std::cout << "phi_mean = " << phi_mean << std::endl; 
                 hier_cc_data_ops.addScalar(phi_cloned_idx, phi_idx, -phi_mean);
                 hier_cc_data_ops.add(p_plus_phi_idx, phi_idx, p_idx);
             }
@@ -560,10 +586,13 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                 if (!level->checkAllocated(p_cloned_idx)) level->allocatePatchData(p_cloned_idx);
             }
 
+           /* 
             pout << "\n"
                  << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n"
                  << "Computing error norms.\n\n";
 
+            */
+            
             u_init->setDataOnPatchHierarchy(u_cloned_idx, u_var, patch_hierarchy, loop_time);
             p_init->setDataOnPatchHierarchy(p_cloned_idx, p_var, patch_hierarchy, loop_time - 0.5 * dt);
 
@@ -573,12 +602,12 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             {
                 HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
                 hier_cc_data_ops.subtract(u_cloned_idx, u_idx, u_cloned_idx);
-                pout << "Error in u at time " << loop_time << ":\n"
+            /*    pout << "Error in u at time " << loop_time << ":\n"
                      << "  L1-norm:  "
                      << std::setprecision(10) << hier_cc_data_ops.L1Norm(u_cloned_idx, wgt_cc_idx) << "\n"
                      << "  L2-norm:  " << hier_cc_data_ops.L2Norm(u_cloned_idx, wgt_cc_idx) << "\n"
                      << "  max-norm: " << hier_cc_data_ops.maxNorm(u_cloned_idx, wgt_cc_idx) << "\n";
-                     
+              */       
                      u_err[0] = hier_cc_data_ops.L1Norm(u_cloned_idx, wgt_cc_idx);
                      u_err[1] = hier_cc_data_ops.L2Norm(u_cloned_idx, wgt_cc_idx);
                      u_err[2] = hier_cc_data_ops.maxNorm(u_cloned_idx, wgt_cc_idx);
@@ -589,12 +618,12 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             {
                 HierarchySideDataOpsReal<NDIM, double> hier_sc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
                 hier_sc_data_ops.subtract(u_cloned_idx, u_idx, u_cloned_idx);
-                pout << "Error in u at time " << loop_time << ":\n"
+             /*   pout << "Error in u at time " << loop_time << ":\n"
                      << "  L1-norm:  " 
                      << std::setprecision(10) << hier_sc_data_ops.L1Norm(u_cloned_idx, wgt_sc_idx) << "\n"
                      << "  L2-norm:  " << hier_sc_data_ops.L2Norm(u_cloned_idx, wgt_sc_idx) << "\n"
                      << "  max-norm: " << hier_sc_data_ops.maxNorm(u_cloned_idx, wgt_sc_idx) << "\n";
-                     
+              */       
                      u_err[0] = hier_sc_data_ops.L1Norm(u_cloned_idx, wgt_sc_idx);
                      u_err[1] = hier_sc_data_ops.L2Norm(u_cloned_idx, wgt_sc_idx);
                      u_err[2] = hier_sc_data_ops.maxNorm(u_cloned_idx, wgt_sc_idx);
@@ -614,32 +643,38 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
  
             hier_cc_data_ops.subtract(p_cloned_idx, p_idx, p_cloned_idx);
             
-            pout << "Error in p at time " << loop_time - 0.5 * dt << ":\n"
+           /* pout << "Error in p at time " << loop_time - 0.5 * dt << ":\n"
                  << "  L1-norm:  " 
                  << std::setprecision(10) << hier_cc_data_ops.L1Norm(p_cloned_idx, wgt_cc_idx) << "\n"
                  << "  L2-norm:  " << hier_cc_data_ops.L2Norm(p_cloned_idx, wgt_cc_idx) << "\n"
                  << "  max-norm: " << hier_cc_data_ops.maxNorm(p_cloned_idx, wgt_cc_idx) << "\n"
                  << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
-                 
+             */    
                  p_err[0] = hier_cc_data_ops.L1Norm(p_cloned_idx, wgt_cc_idx);
                  p_err[1] = hier_cc_data_ops.L2Norm(p_cloned_idx, wgt_cc_idx);
                  p_err[2] = hier_cc_data_ops.maxNorm(p_cloned_idx, wgt_cc_idx);
 
             
         }
-
+        
+        // write out errors to file
+        error_stream << dx << " ";
+        error_stream << u_err[0] << " " <<  u_err[1] << " " <<  u_err[2] << " ";
+        error_stream << p_err[0] << " " <<  p_err[1] << " " <<  p_err[2] << std::endl;
+        
         // Close the logging streams.
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.close();
+            error_stream.close();
         }
 
         // Cleanup Eulerian boundary condition specification objects (when
         // necessary).
         for (unsigned int d = 0; d < NDIM; ++d) delete u_bc_coefs[d];
-
-    } // cleanup dynamically allocated objects prior to shutdown
-
+        
+     } // cleanup dynamically allocated objects prior to shutdown
+    
     SAMRAIManager::shutdown();
     return true;
 } 
