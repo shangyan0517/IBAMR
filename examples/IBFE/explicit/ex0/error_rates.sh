@@ -2,16 +2,14 @@
 echo "running IBFE/ex0 to compute error rates"
 sleep 1
 echo "deleting old error rates file"
-rm IBFE_errors.dat
+rm errors.dat
 sleep 1
 echo "doing level 1"
-./main2d input2d.test 100 >> output.blah
+./main2d input2d.test 64 -mat_new_nonzero_allocation_err false >> output.blah
 echo "doing level 2"
-./main2d input2d.test 200 >> output.blah
+./main2d input2d.test 128 -mat_new_nonzero_allocation_err false >> output.blah
 echo "doing level 3"
-./main2d input2d.test 300 >> output.blah
-echo "doing level 4"
-./main2d input2d.test 400 >> output.blah
-echo "doing level 5"
-./main2d input2d.test 500 >> output.blah
+./main2d input2d.test 256 -mat_new_nonzero_allocation_err false >> output.blah
+#echo "doing level 4"
+#./main2d input2d.test 512 -mat_new_nonzero_allocation_error false >> output.blah
 echo "Done running "
