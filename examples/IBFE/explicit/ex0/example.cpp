@@ -146,7 +146,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         // and enable file logging.
         Pointer<AppInitializer> app_initializer = new AppInitializer(argc, argv, "IB.log");
         Pointer<Database> input_db = app_initializer->getInputDatabase();
-        
+
         // change DX and dependent parameters in the input file if this is a convergence study        
         if (input_db->getBoolWithDefault("CONVERGENCE_STUDY", false))
         {
@@ -154,19 +154,21 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             int Nnew = 0; istringstream(argv[2]) >> Nnew;
             int MAX_LEVELS = input_db->getInteger("MAX_LEVELS");
             int REF_RATIO = input_db->getInteger("REF_RATIO");
+            double MFAC = input_db->getDouble("MFAC");
             double L = input_db->getDouble("L");
-            
+          
             int NFINEST = (pow(REF_RATIO,MAX_LEVELS - 1))*Nnew;   
             double DX0 = L/(double)Nnew;                                  
             double DX  = L/(double)NFINEST;
             double dtdx_ratio = input_db->getDouble("DT")/ input_db->getDouble("DX");
-            
+     
             input_db->putInteger("N", Nnew);
             input_db->putInteger("NFINEST", NFINEST);
             input_db->putDouble("DX0", DX0);
             input_db->putDouble("DX", DX);
             input_db->putDouble("DT", dtdx_ratio*DX);
-
+            input_db->putDouble("Phi_epsilon",pow(MFAC*DX,2.0));
+            
             // get Cartesian geometry database 
             Pointer<Database> cartesian_db = app_initializer->getComponentDatabase("CartesianGeometry");
             hier::Index<NDIM> lower(0,0);
