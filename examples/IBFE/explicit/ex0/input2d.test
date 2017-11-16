@@ -11,7 +11,7 @@ NFINEST = (REF_RATIO^(MAX_LEVELS - 1))*N       // effective number of grid cells
 DX0 = L/N                                      // mesh width on coarsest grid level
 DX  = L/NFINEST                                // mesh width on finest   grid level
 MFAC = 4.0                                     // ratio of Lagrangian mesh width to Cartesian mesh width
-ELEM_TYPE = "QUAD8"                            // type of element to use for structure discretization
+ELEM_TYPE = "QUAD9"                            // type of element to use for structure discretization
 CONVERGENCE_STUDY = TRUE                      // indicate whether we are performing a convergence study or not;
                                                // if so, attempt to make "nested" structural meshes
 
@@ -123,7 +123,7 @@ IBFEMethod {
    use_jump_conditions        = USE_JUMP_CONDITIONS
    use_consistent_mass_matrix = USE_CONSISTENT_MASS_MATRIX
    IB_point_density           = IB_POINT_DENSITY
-   Phi_epsilon                = (MFAC*DX)^2                                                            
+   Phi_epsilon                = 0.0  // (MFAC*DX)^2                                                            
    poisson_solver             = "IPDG"
    ipdg_poisson_penalty       = 2.0
    cg_poisson_penalty         = 1.0e10
