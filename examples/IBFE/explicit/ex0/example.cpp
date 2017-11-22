@@ -170,7 +170,8 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             input_db->putDouble("DX0", DX0);
             input_db->putDouble("DX", DX);
             input_db->putDouble("DT", dtdx_ratio*DX);
-            if(!(Phi_epsilon == 0.0)) { ibfe_db->putDouble("Phi_epsilon",pow(MFAC*DX,2.0)); }
+//            if(!(Phi_epsilon == 0.0)) { ibfe_db->putDouble("Phi_epsilon",pow(MFAC*DX,2.0)); }
+            if(!(Phi_epsilon == 0.0)) { ibfe_db->putDouble("Phi_epsilon", MFAC*DX); }
             
             // get Cartesian geometry database 
             Pointer<Database> cartesian_db = app_initializer->getComponentDatabase("CartesianGeometry");

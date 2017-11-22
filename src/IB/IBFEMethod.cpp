@@ -753,7 +753,7 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     else if (poisson_solver.compare("IPDG") == 0)
     {
         Phi_system.attach_assemble_function(assemble_ipdg_poisson);
-        Phi_system.add_variable("Phi", d_fe_order[part], MONOMIAL);
+        Phi_system.add_variable("Phi", Phi_fe_order, MONOMIAL);
     }
     else 
     {
@@ -3152,8 +3152,8 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     poisson_solver = db->getString("poisson_solver");
     ipdg_poisson_penalty = db->getDouble("ipdg_poisson_penalty");
     cg_poisson_penalty = db->getDouble("cg_poisson_penalty");
-        
-    
+    Phi_fe_order = static_cast<Order>( db->getIntegerWithDefault("Phi_fe_order", 2) );
+       
     return;
 } // getFromInput
 
