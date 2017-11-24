@@ -1274,6 +1274,11 @@ IBFEMethod::initializeFEData()
             LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
             Phi_system.assemble_before_solve = false;
             Phi_system.assemble();
+            // if we are solving the heat equation for Phi, population solution vector with initial condition
+            if (Phi_time_evolution)
+            {
+                
+            }
         }
 
         // Set up boundary conditions.  Specifically, add appropriate boundary
@@ -2965,6 +2970,11 @@ IBFEMethod::commonConstructor(const std::string& object_name,
     // Indicate that all of the parts do NOT use stress normalization by default
     // and set some default values.
     d_epsilon = 0.0;
+    Phi_time_evolution = false;
+    ipdg_poisson_penalty = 2.0;
+    Phi_fe_order = static_cast<libMesh::Order>(1);
+    cg_poisson_penalty = 1e10;
+    poisson_solver = "CG";
     d_has_stress_normalization_parts = false;
     d_stress_normalization_part.resize(d_num_parts, false);
 
