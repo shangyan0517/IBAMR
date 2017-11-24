@@ -1274,10 +1274,11 @@ IBFEMethod::initializeFEData()
             LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
             Phi_system.assemble_before_solve = false;
             Phi_system.assemble();
+            
             // if we are solving the heat equation for Phi, population solution vector with initial condition
-            if (Phi_time_evolution)
+            if ( Phi_time_evolution && (poisson_solver.compare("CG") == 0) )
             {
-                
+                computeStressNormalization(*d_Phi_half_vecs[part], *d_X_half_vecs[part], 0.0, part);
             }
         }
 
