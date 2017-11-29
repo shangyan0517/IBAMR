@@ -1788,8 +1788,14 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 // get values of solution and its gradient at the previous timestep
                 for (unsigned int l=0; l<phi.size(); l++)
                 {
-                    Phi_old += phi[l][qp]*system.old_solution(Phi_dof_indices[l]);
-                    grad_Phi_old.add_scaled (dphi[l][qp],system.old_solution(Phi_dof_indices[l]));   
+                    Phi_old += phi[l][qp]*Phi_system.old_solution(Phi_dof_indices[l]);
+                    grad_Phi_old.add_scaled (dphi[l][qp],Phi_system.old_solution(Phi_dof_indices[l]));   
+                }
+                
+                for (unsigned int i = 0; i < phi.size(); i++)
+                {
+                    // for timestepping
+                    Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
                 }
             
             }
@@ -1912,7 +1918,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int i = 0; i < n_basis; ++i)
                 {
-                    if (Phi_solver.compare("CG") == 0)
+                    if ( ( Phi_solver.compare("CG") == 0 ) || ( Phi_solver.compare("CG_HEAT") == 0 ) )
                     {
                         Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
                     }
@@ -1930,7 +1936,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 }
             }
 
-            if (Phi_solver.compare("CG")==0)
+            if ( ( Phi_solver.compare("CG")==0 ) || ( Phi_solver.compare("CG_HEAT") == 0 ) )
             {
                 // Apply constraints (e.g., enforce periodic boundary conditions)
                 // and add the elemental contributions to the global vector.
