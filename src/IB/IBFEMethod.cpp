@@ -228,6 +228,37 @@ get_x_and_FF(libMesh::VectorValue<double>& x,
     return;
 }
 
+// initial condition for the stress normalization function Phi
+// which solves the heat equation.
+Real heat_initial_condition (const Point & p,
+                                const Parameters & parameters,
+                                const std::string &,
+                                const std::string &)
+{
+  const Real x = p(0);
+  const Real y = p(1);
+  const Real z = p(2);
+
+  const Real t = parameters.get<Real> ("time");
+
+  return 0.0;
+  
+}
+
+// computing initial conditions
+void init_cg_heat(EquationSystems & es,
+               const std::string & system_name)
+{
+
+  TransientLinearImplicitSystem & heat_system = es.get_system<TransientLinearImplicitSystem> ("Heat");
+    
+  es.parameters.set<Real> ("time") = heat_system.time = 0;
+  
+  // project exact solution at time t=0 for the initial condition
+  heat_system.project_solution(heat_initial_condition, NULL, es.parameters);
+
+}
+
 void assemble_cg_heat(EquationSystems & es,
                       const std::string & system_name)
 {
@@ -848,9 +879,9 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_equation_systems[part]->parameters.set<Real>("ipdg_poisson_penalty") = ipdg_poisson_penalty;
     d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
     d_equation_systems[part]->parameters.set<std::string>("Phi_solver") = Phi_solver;
-    
+    d_equation_systems[part]->parameters.set<std::string>("dt") = d_new_time - d_current_time;
+
     // assign function for building Phi linear system.  defaults to CG discretization
-        
     if(Phi_solver.compare("CG") == 0) 
     {
         Phi_system.attach_assemble_function(assemble_cg_poisson);
@@ -863,6 +894,7 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     }
     else if(Phi_solver.compare("CG_HEAT") == 0)
     {
+        Phi_system.attach_init_function(init_cg_heat);
         Phi_system.attach_assemble_function(assemble_cg_heat);
         Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
     }
@@ -1382,9 +1414,18 @@ IBFEMethod::initializeFEData()
 
         if (d_stress_normalization_part[part])
         {
-            LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
+            if(!(Phi_solver.compare("CG_HEAT")))
+            {
+                LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
+            }
+            else
+            {
+                TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
+            }
+            
             Phi_system.assemble_before_solve = false;
             Phi_system.assemble();
+            
         }
 
         // Set up boundary conditions.  Specifically, add appropriate boundary
@@ -1643,7 +1684,14 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     // Setup extra data needed to compute stresses/forces.
 
     // Extract the FE systems and DOF maps, and setup the FE objects.
-    LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
+    if(!(Phi_solver.compare("CG_HEAT")))
+    {
+        LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
+    }
+    else
+    {
+        TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
+    }
     const DofMap& Phi_dof_map = Phi_system.get_dof_map();
     FEDataManager::SystemDofMapCache& Phi_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(PHI_SYSTEM_NAME);
     std::vector<unsigned int> Phi_dof_indices;
