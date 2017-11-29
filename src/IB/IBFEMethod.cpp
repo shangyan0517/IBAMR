@@ -245,13 +245,13 @@ Real heat_initial_condition (const Point & p,
 
 // computing initial conditions
 void init_cg_heat(EquationSystems & es,
-               const std::string & system_name)
+                  const std::string & system_name)
 {
 
-  TransientLinearImplicitSystem& Phi_system = es.get_system<TransientLinearImplicitSystem> (PHI_SYSTEM_NAME);
+  TransientLinearImplicitSystem& Phi_system = es.get_system<TransientLinearImplicitSystem> (IBFEMethod::PHI_SYSTEM_NAME);
   
   // project exact solution at time t=0 for the initial condition
-  heat_system.project_solution(heat_initial_condition, NULL, es.parameters);
+  Phi_system.project_solution(heat_initial_condition, NULL, es.parameters);
 
 }
 
@@ -361,7 +361,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
     point_locator.build(TREE_ELEMENTS, mesh);
     if(point_locator.initialized()) { std::cout << "point locator initialized" << std::endl; } 
     const unsigned int dim = mesh.mesh_dimension();
-    LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
+    TransientLinearImplicitSystem& ellipticdg_system = es.get_system<TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
     const Real ipdg_poisson_penalty = es.parameters.get<Real> ("ipdg_poisson_penalty");
     
     const double epsilon = es.parameters.get<Real>("Phi_epsilon");
@@ -703,7 +703,7 @@ assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
     const MeshBase& mesh = es.get_mesh();
     const BoundaryInfo& boundary_info = *mesh.boundary_info;
     const unsigned int dim = mesh.mesh_dimension();
-    LinearImplicitSystem& system = es.get_system<LinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
+    TransientLinearImplicitSystem& system = es.get_system<TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
     const DofMap& dof_map = system.get_dof_map();
     FEType fe_type = dof_map.variable_type(0);
 
@@ -862,15 +862,8 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_has_stress_normalization_parts = true;
     d_stress_normalization_part[part] = true;
     
-    if(!(Phi_solver.compare("CG_HEAT")==0))
-    {
-        System& Phi_system = d_equation_systems[part]->add_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
-    }
-    else
-    {
-        System& Phi_system = d_equation_systems[part]->add_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
-    }
-    
+    System& Phi_system = d_equation_systems[part]->add_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
+        
     d_equation_systems[part]->parameters.set<Real>("Phi_epsilon") = d_epsilon;
     d_equation_systems[part]->parameters.set<Real>("ipdg_poisson_penalty") = ipdg_poisson_penalty;
     d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
@@ -1410,15 +1403,9 @@ IBFEMethod::initializeFEData()
 
         if (d_stress_normalization_part[part])
         {
-            if(!(Phi_solver.compare("CG_HEAT")))
-            {
-                LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
-            }
-            else
-            {
-                TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
-            }
-            
+         
+            TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
+                        
             Phi_system.assemble_before_solve = false;
             Phi_system.assemble();
             
@@ -1680,14 +1667,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     // Setup extra data needed to compute stresses/forces.
 
     // Extract the FE systems and DOF maps, and setup the FE objects.
-    if(!(Phi_solver.compare("CG_HEAT")))
-    {
-        LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
-    }
-    else
-    {
-        TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
-    }
+    TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
     
     const DofMap& Phi_dof_map = Phi_system.get_dof_map();
     FEDataManager::SystemDofMapCache& Phi_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(PHI_SYSTEM_NAME);
