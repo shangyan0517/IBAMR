@@ -48,6 +48,8 @@
 #include <libmesh/mesh_generation.h>
 #include <libmesh/periodic_boundary.h>
 #include <libmesh/transient_system.h>
+#include <libmesh/linear_implicit_system.h>
+
 
 // Headers for application-specific algorithm/data structure objects
 #include <boost/multi_array.hpp>
