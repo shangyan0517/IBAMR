@@ -111,6 +111,7 @@
 #include "libmesh/point_locator_base.h"
 #include "libmesh/point_locator_list.h"
 #include "libmesh/periodic_boundaries.h"
+#include "libmesh/transient_system.h"
 #include "petscvec.h"
 #include "tbox/Array.h"
 #include "tbox/Database.h"
@@ -227,8 +228,100 @@ get_x_and_FF(libMesh::VectorValue<double>& x,
     return;
 }
 
+void assemble_cg_heat(EquationSystems & es,
+                      const std::string & system_name)
+{
+    
+    std::cout << "------------------------------"  << std::endl; 
+    std::cout << "in CG HEAT assemble" << std::endl;
+    std::cout << "------------------------------"  << std::endl; 
+    
+    const MeshBase& mesh = es.get_mesh();
+    const BoundaryInfo& boundary_info = *mesh.boundary_info;
+    const unsigned int dim = mesh.mesh_dimension();
+    TransientLinearImplicitSystem& system = es.get_system<TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
+    const DofMap& dof_map = system.get_dof_map();
+    FEType fe_type = dof_map.variable_type(0);
+    
+    UniquePtr<FEBase> fe(FEBase::build(dim, fe_type));
+    QGauss qrule(dim, FIFTH);
+    fe->attach_quadrature_rule(&qrule);
+    UniquePtr<FEBase> fe_face(FEBase::build(dim, fe_type));
+    QGauss qface(dim - 1, FIFTH);
+    fe_face->attach_quadrature_rule(&qface);
+    
+    const std::vector<Real>& JxW = fe->get_JxW();
+    const std::vector<std::vector<Real> >& phi = fe->get_phi();
+    const std::vector<std::vector<RealGradient> >& dphi = fe->get_dphi();
+    
+    // for volume integrals where we do the method of manufactured solutions
+    const std::vector<Point> & qvolume_points = fe->get_xyz();
+    
+    const std::vector<std::vector<Real> >& phi_face = fe_face->get_phi();
+    const std::vector<Real>& JxW_face = fe_face->get_JxW();
+
+    // for surface integrals to apply BCs.    
+    const std::vector<Point> & qface_points = fe_face->get_xyz();
+    
+    DenseMatrix<Number> Ke;
+    DenseVector<Number> Fe;
+    std::vector<dof_id_type> dof_indices;
+    
+    const Real dt = es.parameters.get<Real> ("dt");
+    const Real PENALTY = es.parameters.get<Real> ("cg_poisson_penalty");
+        
+    MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
+    const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+    for (; el != end_el; ++el)
+    {
+        const Elem* elem = *el;
+        dof_map.dof_indices(elem, dof_indices);
+        fe->reinit(elem);
+        unsigned int Ke_size = static_cast<unsigned int>(dof_indices.size());
+        Ke.resize(Ke_size, Ke_size);
+        Fe.resize(Ke_size);
+        for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+        {
+            
+            for (unsigned int i = 0; i < phi.size(); i++)
+            {
+            
+                for (unsigned int j = 0; j < phi.size(); j++)
+                {
+                    Ke(i, j) += (phi[i][qp] * phi[j][qp] + 0.5*dt*(dphi[i][qp] * dphi[j][qp])) * JxW[qp];
+                }
+            }
+        }
+        
+        for (unsigned int side = 0; side < elem->n_sides(); side++)
+        {
+            // penalty method to apply boundary conditions
+            if (elem->neighbor(side) == libmesh_nullptr)
+            {
+                fe_face->reinit(elem, side);
+                for (unsigned int qp = 0; qp < qface.n_points(); qp++)
+                {
+                    for (unsigned int i = 0; i < phi_face.size(); ++i)
+                    {
+                        for (unsigned int j = 0; j < phi_face.size(); ++j)
+                        {
+                            Ke(i, j) += PENALTY * phi_face[i][qp] * phi_face[j][qp] * JxW_face[qp];
+                        }
+                    }
+                }
+            }
+        }
+        
+        system.matrix->add_matrix(Ke, dof_indices);
+        system.rhs->add_vector(Fe,dof_indices);
+    
+    }
+    
+}
+
+
 void assemble_ipdg_poisson(EquationSystems & es,
-        const std::string & system_name)
+                           const std::string & system_name)
 {
     
     std::cout << "------------------------------"  << std::endl; 
@@ -575,6 +668,11 @@ void assemble_ipdg_poisson(EquationSystems & es,
 void
 assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
 {
+    
+    std::cout << "------------------------------"  << std::endl; 
+    std::cout << "in CG assemble" << std::endl;
+    std::cout << "------------------------------"  << std::endl; 
+    
     const MeshBase& mesh = es.get_mesh();
     const BoundaryInfo& boundary_info = *mesh.boundary_info;
     const unsigned int dim = mesh.mesh_dimension();
@@ -736,15 +834,23 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     if (d_stress_normalization_part[part]) return;
     d_has_stress_normalization_parts = true;
     d_stress_normalization_part[part] = true;
-    System& Phi_system = d_equation_systems[part]->add_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
+    
+    if(!(Phi_solver.compare("CG_HEAT")==0))
+    {
+        System& Phi_system = d_equation_systems[part]->add_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
+    }
+    else
+    {
+        System& Phi_system = d_equation_systems[part]->add_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
+    }
+    
     d_equation_systems[part]->parameters.set<Real>("Phi_epsilon") = d_epsilon;
     d_equation_systems[part]->parameters.set<Real>("ipdg_poisson_penalty") = ipdg_poisson_penalty;
     d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
     d_equation_systems[part]->parameters.set<std::string>("Phi_solver") = Phi_solver;
     
     // assign function for building Phi linear system.  defaults to CG discretization
-    
-    
+        
     if(Phi_solver.compare("CG") == 0) 
     {
         Phi_system.attach_assemble_function(assemble_cg_poisson);
@@ -754,6 +860,11 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     {
         Phi_system.attach_assemble_function(assemble_ipdg_poisson);
         Phi_system.add_variable("Phi", Phi_fe_order, MONOMIAL);
+    }
+    else if(Phi_solver.compare("CG_HEAT") == 0)
+    {
+        Phi_system.attach_assemble_function(assemble_cg_heat);
+        Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
     }
     else 
     {
