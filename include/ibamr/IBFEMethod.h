@@ -624,7 +624,7 @@ protected:
     double ipdg_poisson_penalty;
     libMesh::Order Phi_fe_order;
     double cg_poisson_penalty;
-    std::string poisson_solver;
+    std::string Phi_solver;
     bool d_has_stress_normalization_parts;
     std::vector<bool> d_stress_normalization_part;
 

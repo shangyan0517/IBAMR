@@ -123,9 +123,8 @@ IBFEMethod {
    use_jump_conditions        = USE_JUMP_CONDITIONS
    use_consistent_mass_matrix = USE_CONSISTENT_MASS_MATRIX
    IB_point_density           = IB_POINT_DENSITY
-   Phi_epsilon                = MFAC*DX  
-   Phi_time_evolution         = false        
-   poisson_solver             = "IPDG"
+   Phi_epsilon                = MFAC*DX        
+   Phi_solver             = "IPDG"
    ipdg_poisson_penalty       = 2.0
    cg_poisson_penalty         = 1.0e10
 }

@@ -740,17 +740,17 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_equation_systems[part]->parameters.set<Real>("Phi_epsilon") = d_epsilon;
     d_equation_systems[part]->parameters.set<Real>("ipdg_poisson_penalty") = ipdg_poisson_penalty;
     d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
-    d_equation_systems[part]->parameters.set<std::string>("Poisson_solver") = poisson_solver;
+    d_equation_systems[part]->parameters.set<std::string>("Phi_solver") = Phi_solver;
     
     // assign function for building Phi linear system.  defaults to CG discretization
     
     
-    if(poisson_solver.compare("CG") == 0) 
+    if(Phi_solver.compare("CG") == 0) 
     {
         Phi_system.attach_assemble_function(assemble_cg_poisson);
         Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
     }
-    else if (poisson_solver.compare("IPDG") == 0)
+    else if (Phi_solver.compare("IPDG") == 0)
     {
         Phi_system.attach_assemble_function(assemble_ipdg_poisson);
         Phi_system.add_variable("Phi", Phi_fe_order, MONOMIAL);
@@ -1274,12 +1274,6 @@ IBFEMethod::initializeFEData()
             LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
             Phi_system.assemble_before_solve = false;
             Phi_system.assemble();
-            
-            // if we are solving the heat equation for Phi, population solution vector with initial condition
-            if ( Phi_time_evolution && (poisson_solver.compare("CG") == 0) )
-            {
-                computeStressNormalization(*d_Phi_half_vecs[part], *d_X_half_vecs[part], 0.0, part);
-            }
         }
 
         // Set up boundary conditions.  Specifically, add appropriate boundary
@@ -1552,7 +1546,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     // things for building RHS of Phi linear system based on poisson solver.
     const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
     const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
-    const std::string poisson_solver = equation_systems->parameters.get<std::string> ("Poisson_solver");
+    const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
        
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
@@ -1728,11 +1722,11 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int i = 0; i < n_basis; ++i)
                 {
-                    if (poisson_solver.compare("CG") == 0)
+                    if (Phi_solver.compare("CG") == 0)
                     {
                         Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
                     }
-                    else if (poisson_solver.compare("IPDG") == 0)
+                    else if (Phi_solver.compare("IPDG") == 0)
                     {
                         
                         Phi_rhs_e(i) += JxW_face[qp] * Phi * ipdg_poisson_penalty/h_elem * phi_face[i][qp];
@@ -1746,7 +1740,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 }
             }
 
-            if (poisson_solver.compare("CG")==0)
+            if (Phi_solver.compare("CG")==0)
             {
                 // Apply constraints (e.g., enforce periodic boundary conditions)
                 // and add the elemental contributions to the global vector.
@@ -1763,7 +1757,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     Phi_system.solution->close();
     Phi_system.solution->localize(Phi_vec);
         
-    if (poisson_solver.compare("CG")==0)
+    if (Phi_solver.compare("CG")==0)
     {
         Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec);
     }
@@ -2971,11 +2965,10 @@ IBFEMethod::commonConstructor(const std::string& object_name,
     // Indicate that all of the parts do NOT use stress normalization by default
     // and set some default values.
     d_epsilon = 0.0;
-    Phi_time_evolution = false;
     ipdg_poisson_penalty = 2.0;
     Phi_fe_order = static_cast<libMesh::Order>(1);
     cg_poisson_penalty = 1e10;
-    poisson_solver = "CG";
+    Phi_solver = "CG";
     d_has_stress_normalization_parts = false;
     d_stress_normalization_part.resize(d_num_parts, false);
 
@@ -3160,7 +3153,7 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     
     // get info for stress normalization
     if (db->isDouble("Phi_epsilon")) d_epsilon = db->getDouble("Phi_epsilon");
-    poisson_solver = db->getString("poisson_solver");
+    Phi_solver = db->getString("Phi_solver");
     ipdg_poisson_penalty = db->getDouble("ipdg_poisson_penalty");
     cg_poisson_penalty = db->getDouble("cg_poisson_penalty");
     Phi_fe_order = static_cast<Order>( db->getIntegerWithDefault("Phi_fe_order", 2) );
