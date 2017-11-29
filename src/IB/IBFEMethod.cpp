@@ -239,8 +239,6 @@ Real heat_initial_condition (const Point & p,
   const Real y = p(1);
   const Real z = p(2);
 
-  const Real t = parameters.get<Real> ("time");
-
   return 0.0;
   
 }
@@ -250,9 +248,7 @@ void init_cg_heat(EquationSystems & es,
                const std::string & system_name)
 {
 
-  TransientLinearImplicitSystem & heat_system = es.get_system<TransientLinearImplicitSystem> ("Heat");
-    
-  es.parameters.set<Real> ("time") = heat_system.time = 0;
+  TransientLinearImplicitSystem& Phi_system = es.get_system<TransientLinearImplicitSystem> (PHI_SYSTEM_NAME);
   
   // project exact solution at time t=0 for the initial condition
   heat_system.project_solution(heat_initial_condition, NULL, es.parameters);
@@ -1775,7 +1771,16 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     {
         Elem* const elem = *el_it;
         bool reinit_all_data = true;
-       
+        
+        fe.reinit(elem);
+        if (reinit_all_data)
+        {
+            Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
+            Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
+            fe.collectDataForInterpolation(elem);
+            reinit_all_data = false;
+        }
+        fe.interpolate(elem);
         
         if (Phi_solver.compare("CG_HEAT")==0)
         {

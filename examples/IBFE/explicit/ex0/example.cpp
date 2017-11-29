@@ -47,6 +47,7 @@
 #include <libmesh/mesh.h>
 #include <libmesh/mesh_generation.h>
 #include <libmesh/periodic_boundary.h>
+#include <libmesh/transient_system.h>
 
 // Headers for application-specific algorithm/data structure objects
 #include <boost/multi_array.hpp>
@@ -485,6 +486,12 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
             
+            // update Phi system solution vector if we are solving the heat equation
+            if(input_db->getString("Phi_solver").compare("CG_HEAT") == 0)
+            {
+                TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
+                *Phi_system.old_local_solution = *Phi_system.current_local_solution;
+            }
              
             // get a representation of the stress normalization function Phi on the Cartesian grid.
             System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
