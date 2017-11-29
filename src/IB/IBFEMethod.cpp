@@ -230,10 +230,10 @@ get_x_and_FF(libMesh::VectorValue<double>& x,
 
 // initial condition for the stress normalization function Phi
 // which solves the heat equation.
-Real heat_initial_condition (const Point & p,
-                                const Parameters & parameters,
-                                const std::string &,
-                                const std::string &)
+Number heat_initial_condition(const libMesh::Point & p,
+                              const Parameters & parameters,
+                              const std::string &,
+                              const std::string &)
 {
   const Real x = p(0);
   const Real y = p(1);
@@ -281,14 +281,8 @@ void assemble_cg_heat(EquationSystems & es,
     const std::vector<std::vector<Real> >& phi = fe->get_phi();
     const std::vector<std::vector<RealGradient> >& dphi = fe->get_dphi();
     
-    // for volume integrals where we do the method of manufactured solutions
-    const std::vector<Point> & qvolume_points = fe->get_xyz();
-    
     const std::vector<std::vector<Real> >& phi_face = fe_face->get_phi();
     const std::vector<Real>& JxW_face = fe_face->get_JxW();
-
-    // for surface integrals to apply BCs.    
-    const std::vector<Point> & qface_points = fe_face->get_xyz();
     
     DenseMatrix<Number> Ke;
     DenseVector<Number> Fe;
@@ -1683,6 +1677,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
     const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
     const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
+    const Real dt = equation_systems->parameters.get<Real> ("dt");
        
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
