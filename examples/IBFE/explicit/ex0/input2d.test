@@ -124,7 +124,7 @@ IBFEMethod {
    use_consistent_mass_matrix = USE_CONSISTENT_MASS_MATRIX
    IB_point_density           = IB_POINT_DENSITY
    Phi_epsilon                = 0.0 // MFAC*DX        
-   Phi_solver                 = "IPDG"
+   Phi_solver                 = "CG_HEAT"
    ipdg_poisson_penalty       = 2.0
    cg_poisson_penalty         = 1.0e10
 }

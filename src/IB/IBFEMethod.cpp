@@ -1662,7 +1662,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
 
     // Extract the FE systems and DOF maps, and setup the FE objects.
     TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
-    
+
     const DofMap& Phi_dof_map = Phi_system.get_dof_map();
     FEDataManager::SystemDofMapCache& Phi_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(PHI_SYSTEM_NAME);
     std::vector<unsigned int> Phi_dof_indices;
@@ -1678,13 +1678,13 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
     const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
     const Real dt = equation_systems->parameters.get<Real> ("dt");
-       
+
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
     for (unsigned int d = 0; d < NDIM; ++d) X_vars[d] = d;
 
     FEDataInterpolation fe(dim, d_fe_data_managers[part]);
-    UniquePtr<QBase> qrule = QBase::build(QGAUSS, dim - 1, FIFTH);
+    UniquePtr<QBase> qrule = QBase::build(QGAUSS, dim, FIFTH);
     UniquePtr<QBase> qrule_face = QBase::build(QGAUSS, dim - 1, FIFTH);
     fe.attachQuadratureRule(qrule.get());
     fe.attachQuadratureRuleFace(qrule_face.get());
@@ -1730,14 +1730,14 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     std::vector<std::vector<const std::vector<VectorValue<double> >*> > PK1_grad_var_data(num_PK1_fcns);
     std::vector<const std::vector<double> *> surface_force_var_data, surface_pressure_var_data;
     std::vector<const std::vector<VectorValue<double> > *> surface_force_grad_var_data, surface_pressure_grad_var_data;
-
+                            
     // Setup global and elemental right-hand-side vectors.
-    NumericVector<double>* Phi_rhs_vec = Phi_system.rhs;
-    Phi_rhs_vec->zero();
+    NumericVector<double>* Phi_rhs_vec = Phi_system.rhs;   
     Phi_rhs_vec->close();
+    Phi_rhs_vec->zero();
     DenseVector<double> Phi_rhs_e;
 
-    // Set up boundary conditions for Phi.
+    // Set up boundary conditions for Phi.+
     TensorValue<double> PP, FF, FF_trans, FF_inv_trans;
     VectorValue<double> F, F_s, F_qp, n, x;
     const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
@@ -1756,12 +1756,12 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             reinit_all_data = false;
         }
         fe.interpolate(elem);
-        
+
         if (Phi_solver.compare("CG_HEAT")==0)
-        {
+        {                    
             for (unsigned int qp = 0; qp < qrule->n_points(); qp++)
             {
-                  
+
                 Number   Phi_old = 0.0;
                 Gradient grad_Phi_old;
                 
@@ -1926,18 +1926,18 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             Phi_rhs_vec->add_vector(Phi_rhs_e, Phi_dof_indices);
         }
     }
-
+     
     // Solve for Phi.
     Phi_rhs_vec->close();
     Phi_system.solve();
     Phi_system.solution->close();
     Phi_system.solution->localize(Phi_vec);
-        
-    if (Phi_solver.compare("CG")==0)
+            
+    if ( (Phi_solver.compare("CG")==0) || ( Phi_solver.compare("CG_HEAT") == 0 ) )
     {
         Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec);
     }
-    
+        
     return;
 }
 
