@@ -862,7 +862,7 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_equation_systems[part]->parameters.set<Real>("ipdg_poisson_penalty") = ipdg_poisson_penalty;
     d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
     d_equation_systems[part]->parameters.set<std::string>("Phi_solver") = Phi_solver;
-    d_equation_systems[part]->parameters.set<std::string>("dt") = d_new_time - d_current_time;
+    d_equation_systems[part]->parameters.set<Real>("dt") = d_new_time - d_current_time;
 
     // assign function for building Phi linear system.  defaults to CG discretization
     if(Phi_solver.compare("CG") == 0) 

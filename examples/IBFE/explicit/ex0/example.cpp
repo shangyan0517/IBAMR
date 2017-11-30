@@ -149,6 +149,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         // and enable file logging.
         Pointer<AppInitializer> app_initializer = new AppInitializer(argc, argv, "IB.log");
         Pointer<Database> input_db = app_initializer->getInputDatabase();
+        Pointer<Database> ibfe_db = app_initializer->getComponentDatabase("IBFEMethod");
 
         // change DX and dependent parameters in the input file if this is a convergence study        
         if (input_db->getBoolWithDefault("CONVERGENCE_STUDY", false))
@@ -160,7 +161,6 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             double MFAC = input_db->getDouble("MFAC");
             double L = input_db->getDouble("L");
             
-            Pointer<Database> ibfe_db = app_initializer->getComponentDatabase("IBFEMethod");
             double Phi_epsilon = ibfe_db->getDouble("Phi_epsilon");
           
             int NFINEST = (pow(REF_RATIO,MAX_LEVELS - 1))*Nnew;   
@@ -489,7 +489,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             pout << "\n";
             
             // update Phi system solution vector if we are solving the heat equation
-            if(input_db->getString("Phi_solver").compare("CG_HEAT") == 0)
+            if(ibfe_db->getString("Phi_solver").compare("CG_HEAT") == 0)
             {
                 libMesh::TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<libMesh::TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
                 *Phi_system.old_local_solution = *Phi_system.current_local_solution;
