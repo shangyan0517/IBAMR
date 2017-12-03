@@ -252,7 +252,7 @@ void init_cg_heat(EquationSystems & es,
   
   // project exact solution at time t=0 for the initial condition
   Phi_system.project_solution(heat_initial_condition, NULL, es.parameters);
-
+  
 }
 
 void assemble_cg_heat(EquationSystems & es,
@@ -857,7 +857,7 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_stress_normalization_part[part] = true;
     
     System& Phi_system = d_equation_systems[part]->add_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
-        
+                
     d_equation_systems[part]->parameters.set<Real>("Phi_epsilon") = d_epsilon;
     d_equation_systems[part]->parameters.set<Real>("ipdg_poisson_penalty") = ipdg_poisson_penalty;
     d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
@@ -868,23 +868,23 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     if(Phi_solver.compare("CG") == 0) 
     {
         Phi_system.attach_assemble_function(assemble_cg_poisson);
-        Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
+        Phi_system.add_variable("Phi CG", d_fe_order[part], d_fe_family[part]);
     }
     else if (Phi_solver.compare("IPDG") == 0)
     {
         Phi_system.attach_assemble_function(assemble_ipdg_poisson);
-        Phi_system.add_variable("Phi", Phi_fe_order, MONOMIAL);
+        Phi_system.add_variable("Phi IPDG", Phi_fe_order, MONOMIAL);
     }
     else if(Phi_solver.compare("CG_HEAT") == 0)
     {
         Phi_system.attach_init_function(init_cg_heat);
         Phi_system.attach_assemble_function(assemble_cg_heat);
-        Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
+        Phi_system.add_variable("Phi Heat", d_fe_order[part], d_fe_family[part]);
     }
     else 
     {
         Phi_system.attach_assemble_function(assemble_cg_poisson);
-        Phi_system.add_variable("Phi", d_fe_order[part], d_fe_family[part]);
+        Phi_system.add_variable("Phi CG", d_fe_order[part], d_fe_family[part]);
     }
         
     return;
