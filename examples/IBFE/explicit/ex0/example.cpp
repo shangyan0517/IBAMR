@@ -516,8 +516,6 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                                              false);
             
                 const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
-          //      std::cout << "volume = " <<  volume << std::endl;
-          //      std::cout << "phi_mean = " << phi_mean << std::endl; 
                 hier_cc_data_ops.addScalar(phi_cloned_idx, phi_idx, -phi_mean);
                 hier_cc_data_ops.add(p_plus_phi_idx, phi_idx, p_idx);
             }

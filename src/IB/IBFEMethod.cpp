@@ -239,7 +239,7 @@ Number heat_initial_condition(const libMesh::Point & p,
   const Real y = p(1);
   const Real z = p(2);
 
-  return 0.0;
+  return 1.3;
   
 }
 
