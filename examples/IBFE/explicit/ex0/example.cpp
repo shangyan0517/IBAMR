@@ -34,7 +34,6 @@
 
 // Headers for basic PETSc functions
 #include <petscsys.h>
-
 // Headers for basic SAMRAI objects
 #include <BergerRigoutsos.h>
 #include <CartesianGridGeometry.h>
@@ -293,13 +292,13 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                                         error_detector,
                                         box_generator,
                                         load_balancer);
-
+        
         // Configure the IBFE solver.
         ib_method_ops->initializeFEEquationSystems();
         FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager();
         ib_method_ops->registerInitialCoordinateMappingFunction(coordinate_mapping_function);
         ib_method_ops->registerPK1StressFunction(PK1_stress_function);
-        
+                
         // setup libmesh things for eliminating pressure jumps
         if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
         {
@@ -487,13 +486,6 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             pout << "Simulation time is " << loop_time << "\n";
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
-            
-            // update Phi system solution vector if we are solving the heat equation
-            if(ibfe_db->getString("Phi_solver").compare("CG_HEAT") == 0)
-            {
-                libMesh::TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<libMesh::TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
-                *Phi_system.old_local_solution = *Phi_system.current_local_solution;
-            }
              
             // get a representation of the stress normalization function Phi on the Cartesian grid.
             System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
@@ -624,8 +616,6 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             pout << "\n"
                  << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n"
                  << "Computing error norms.\n\n";
-
-            
             
             u_init->setDataOnPatchHierarchy(u_cloned_idx, u_var, patch_hierarchy, loop_time);
             p_init->setDataOnPatchHierarchy(p_cloned_idx, p_var, patch_hierarchy, loop_time - 0.5 * dt);
@@ -688,7 +678,13 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                  p_err[1] = hier_cc_data_ops.L2Norm(p_cloned_idx, wgt_cc_idx);
                  p_err[2] = hier_cc_data_ops.maxNorm(p_cloned_idx, wgt_cc_idx);
 
-            
+                 // update Phi system solution vector if we are solving the heat equation
+                 if(ibfe_db->getString("Phi_solver").compare("CG_HEAT") == 0)
+                 {
+                     libMesh::TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<libMesh::TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
+                     *Phi_system.old_local_solution = *Phi_system.current_local_solution;
+                 }
+                 
         }
         
         // write out errors to file

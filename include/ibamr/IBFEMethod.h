@@ -513,6 +513,15 @@ public:
     void writeFEDataToRestartFile(const std::string& restart_dump_dirname, unsigned int time_step_number);
 
 protected:
+    
+    /*
+     * \brief Function to initialize the stress normalization field Phi
+     * when it satisfies the heat equation.
+     */
+    void init_cg_heat(libMesh::PetscVector<double>& Phi_vec,
+                      libMesh::PetscVector<double>& X_vec,
+                      unsigned int part);
+    
     /*
      * \brief Compute the stress normalization field Phi.
      */
