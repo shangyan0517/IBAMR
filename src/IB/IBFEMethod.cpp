@@ -877,7 +877,7 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     }
     else if(Phi_solver.compare("CG_HEAT") == 0)
     {
-        // Phi_system.attach_init_function(init_cg_heat_project);
+        Phi_system.attach_init_function(init_cg_heat_project);
         Phi_system.attach_assemble_function(assemble_cg_heat);
         Phi_system.add_variable("Phi Heat", d_fe_order[part], d_fe_family[part]);
     }
@@ -1400,7 +1400,7 @@ IBFEMethod::initializeFEData()
          
             TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
             
-            if(Phi_solver.compare("CG_HEAT")==0)
+            /*if(Phi_solver.compare("CG_HEAT")==0)
             {
                 // attach assemble function for computing initial condition as solution to 
                 // steady state heat equation
@@ -1410,7 +1410,7 @@ IBFEMethod::initializeFEData()
                 init_cg_heat(*d_Phi_half_vecs[part], *d_X_half_vecs[part], part);
                 // reattach heat equation assemble function
                 Phi_system.attach_assemble_function(assemble_cg_heat); 
-            }    
+            } */   
             
             Phi_system.assemble_before_solve = false;
             Phi_system.assemble();
@@ -1905,7 +1905,7 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& Phi_vec,
     Phi_rhs_vec->close();
     Phi_system.solve();
     // store this initial condition as the old solution
-    // Phi_system.update(); // synchronize solution and current local solution
+    Phi_system.update(); // synchronize solution and current local solution
     *Phi_system.old_local_solution  = *Phi_system.current_local_solution;
     // Phi_system.solution->close();
     //Phi_system.solution->localize(Phi_vec);
