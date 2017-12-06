@@ -1,7 +1,7 @@
 // Filename: IBFEMethod.cpp
 // Created on 5 Oct 2011 by Boyce Griffith
 //
-// Copyright (c) 2002-2014, Boyce Griffith
+// Copyright (c) 2002-2017, Boyce Griffith
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -1149,7 +1149,6 @@ IBFEMethod::interpolateVelocity(const int u_data_idx,
 void
 IBFEMethod::forwardEulerStep(const double current_time, const double new_time)
 {
-    return; // XXXX
     const double dt = new_time - current_time;
     int ierr;
     for (unsigned int part = 0; part < d_num_parts; ++part)
@@ -1168,7 +1167,6 @@ IBFEMethod::forwardEulerStep(const double current_time, const double new_time)
 void
 IBFEMethod::midpointStep(const double current_time, const double new_time)
 {
-    return; // XXXX
     const double dt = new_time - current_time;
     int ierr;
     for (unsigned int part = 0; part < d_num_parts; ++part)
@@ -1187,7 +1185,6 @@ IBFEMethod::midpointStep(const double current_time, const double new_time)
 void
 IBFEMethod::trapezoidalStep(const double current_time, const double new_time)
 {
-    return; // XXXX
     const double dt = new_time - current_time;
     int ierr;
     for (unsigned int part = 0; part < d_num_parts; ++part)

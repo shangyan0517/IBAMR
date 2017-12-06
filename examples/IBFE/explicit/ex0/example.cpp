@@ -380,7 +380,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         {
             time_integrator->registerVisItDataWriter(visit_data_writer);
         }
-        AutoPtr<ExodusII_IO> exodus_io(uses_exodus ? new ExodusII_IO(mesh) : NULL);
+        libMesh::UniquePtr<ExodusII_IO> exodus_io(uses_exodus ? new ExodusII_IO(mesh) : NULL);
 
         // Initialize hierarchy configuration and data on all patches.
         EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
@@ -682,7 +682,6 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                      libMesh::TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<libMesh::TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
                      *Phi_system.old_local_solution = *Phi_system.current_local_solution;
                  }
-                 
         }
         
         // write out errors to file
