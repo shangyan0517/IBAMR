@@ -679,8 +679,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                  // update Phi system solution vector if we are solving the heat equation
                  if(ibfe_db->getString("Phi_solver").compare("CG_HEAT") == 0)
                  {
-                     libMesh::TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<libMesh::TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
-                     *Phi_system.old_local_solution = *Phi_system.current_local_solution;
+                     ib_method_ops->evolveStressNormalization(loop_time - dt, loop_time);
                  }
         }
         

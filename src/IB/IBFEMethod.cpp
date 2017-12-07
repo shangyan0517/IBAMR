@@ -239,7 +239,7 @@ Number heat_initial_condition(const libMesh::Point & p,
   const Real y = p(1);
   const Real z = p(2);
 
-  return 1.3;
+  return 0.0;
   
 }
 
@@ -289,6 +289,7 @@ void assemble_cg_heat(EquationSystems & es,
     std::vector<dof_id_type> dof_indices;
     
     const Real dt = es.parameters.get<Real> ("dt");
+    std::cout << "AHHHHHH! DT= " << dt << std::endl;
     const Real PENALTY = es.parameters.get<Real> ("cg_poisson_penalty");
         
     MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
@@ -333,8 +334,8 @@ void assemble_cg_heat(EquationSystems & es,
             }
         }
         
+        dof_map.constrain_element_matrix(Ke, dof_indices);
         system.matrix->add_matrix(Ke, dof_indices);
-        system.rhs->add_vector(Fe,dof_indices);
     
     }
     
@@ -862,7 +863,7 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_equation_systems[part]->parameters.set<Real>("ipdg_poisson_penalty") = ipdg_poisson_penalty;
     d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
     d_equation_systems[part]->parameters.set<std::string>("Phi_solver") = Phi_solver;
-    d_equation_systems[part]->parameters.set<Real>("dt") = d_new_time - d_current_time;
+    d_equation_systems[part]->parameters.set<Real>("dt") = Phi_dt;
 
     // assign function for building Phi linear system.  defaults to CG discretization
     if(Phi_solver.compare("CG") == 0) 
@@ -1145,6 +1146,22 @@ IBFEMethod::interpolateVelocity(const int u_data_idx,
     }
     return;
 } // interpolateVelocity
+
+void
+IBFEMethod::evolveStressNormalization(const double current_time, const double new_time)
+{
+    const double dt = new_time - current_time;
+    for (unsigned int part = 0; part < d_num_parts; ++part)
+    {
+        EquationSystems* equation_systems = d_equation_systems[part];
+        d_equation_systems[part]->parameters.set<Real>("dt") = dt;
+        TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
+        Phi_system.time = new_time;
+        *Phi_system.old_local_solution = *Phi_system.current_local_solution;
+    }
+    return;
+} // evolveStressNormalization
+
 
 void
 IBFEMethod::forwardEulerStep(const double current_time, const double new_time)
@@ -1902,9 +1919,8 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& Phi_vec,
     Phi_rhs_vec->close();
     Phi_system.solve();
     // store this initial condition as the old solution
-    Phi_system.update(); // synchronize solution and current local solution
     *Phi_system.old_local_solution  = *Phi_system.current_local_solution;
-    // Phi_system.solution->close();
+    Phi_system.solution->close();
     //Phi_system.solution->localize(Phi_vec);
     //Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec); 
     
@@ -3598,6 +3614,7 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     Phi_solver = db->getString("Phi_solver");
     ipdg_poisson_penalty = db->getDouble("ipdg_poisson_penalty");
     cg_poisson_penalty = db->getDouble("cg_poisson_penalty");
+    Phi_dt = db->getDouble("Phi_dt");
     Phi_fe_order = static_cast<Order>( db->getIntegerWithDefault("Phi_fe_order", 2) );
        
     return;

@@ -350,6 +350,11 @@ public:
         double data_time);
 
     /*!
+     * Evolve the Stress normalization function phi if it solves the heat equation.
+     */
+    void evolveStressNormalization(double current_time, double new_time);
+    
+    /*!
      * Advance the positions of the Lagrangian structure using the forward Euler
      * method.
      */
@@ -633,6 +638,7 @@ protected:
     double ipdg_poisson_penalty;
     libMesh::Order Phi_fe_order;
     double cg_poisson_penalty;
+    double Phi_dt;
     std::string Phi_solver;
     bool d_has_stress_normalization_parts;
     std::vector<bool> d_stress_normalization_part;
