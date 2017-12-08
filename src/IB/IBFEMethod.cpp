@@ -1082,7 +1082,7 @@ IBFEMethod::postprocessIntegrateData(double /*current_time*/, double /*new_time*
             d_Phi_half_vecs[part]->close();
             *d_Phi_systems[part]->solution = *d_Phi_half_vecs[part];
             d_Phi_systems[part]->solution->close();
-            d_Phi_systems[part]->solution->localize(*d_Phi_systems[part]->current_local_solution);
+            d_Phi_systems[part]->solution->localize(*d_Phi_systems[part]->current_local_solution);            
         }
 
         // Update the coordinate mapping dX = X - s.
@@ -1150,6 +1150,7 @@ IBFEMethod::interpolateVelocity(const int u_data_idx,
 void
 IBFEMethod::evolveStressNormalization(const double current_time, const double new_time)
 {
+    TBOX_ASSERT(Phi_solver.compare("CG_HEAT")==0);
     const double dt = new_time - current_time;
     for (unsigned int part = 0; part < d_num_parts; ++part)
     {
@@ -1930,9 +1931,9 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& Phi_vec,
 
 void
 IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
-        PetscVector<double>& X_vec,
-        const double data_time,
-        const unsigned int part)
+                                       PetscVector<double>& X_vec,
+                                       const double data_time,
+                                       const unsigned int part)
 {
     // Extract the mesh.
     EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
@@ -2018,8 +2019,9 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     Phi_rhs_vec->close();
     Phi_rhs_vec->zero();
     DenseVector<double> Phi_rhs_e;
-    
-    // Set up boundary conditions for Phi.+
+    DenseVector<double> Phi_rhs_old_e;
+        
+    // Set up boundary conditions for Phi.
     TensorValue<double> PP, FF, FF_trans, FF_inv_trans;
     VectorValue<double> F, F_s, F_qp, n, x;
     const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
@@ -2034,6 +2036,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
         {
             Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
             Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
+            Phi_rhs_old_e.resize(static_cast<int>(Phi_dof_indices.size()));
             fe.collectDataForInterpolation(elem);
             reinit_all_data = false;
         }
@@ -2057,11 +2060,14 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 for (unsigned int i = 0; i < phi.size(); i++)
                 {
                     // for timestepping
-                    Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
+                    Phi_rhs_old_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
                 }
                 
             }
+            
+            Phi_rhs_vec->add_vector(Phi_rhs_old_e, Phi_dof_indices); 
         }
+        
         
         for (unsigned short int side = 0; side < elem->n_sides(); ++side)
         {
@@ -2206,7 +2212,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             }
             
             Phi_rhs_vec->add_vector(Phi_rhs_e, Phi_dof_indices);
-        }
+        } 
     }
     
     // Solve for Phi.
@@ -2214,7 +2220,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     Phi_system.solve();
     Phi_system.solution->close();
     Phi_system.solution->localize(Phi_vec);
-    
+
     if ( (Phi_solver.compare("CG")==0) || ( Phi_solver.compare("CG_HEAT") == 0 ) )
     {
         Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec);

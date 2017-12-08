@@ -435,7 +435,12 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             time_integrator->advanceHierarchy(dt);
             loop_time += dt;
 
-            
+            // update Phi system solution vector if we are solving the heat equation
+            if(ibfe_db->getString("Phi_solver").compare("CG_HEAT") == 0)
+            {
+                ib_method_ops->evolveStressNormalization(loop_time - dt, loop_time);
+            } 
+                        
             pout << "\n";
             pout << "At end       of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";
@@ -631,11 +636,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                  p_err[1] = hier_cc_data_ops.L2Norm(p_cloned_idx, wgt_cc_idx);
                  p_err[2] = hier_cc_data_ops.maxNorm(p_cloned_idx, wgt_cc_idx);
 
-                 // update Phi system solution vector if we are solving the heat equation
-                 if(ibfe_db->getString("Phi_solver").compare("CG_HEAT") == 0)
-                 {
-                     ib_method_ops->evolveStressNormalization(loop_time - dt, loop_time);
-                 }
+             
         }
         
         // write out errors to file
