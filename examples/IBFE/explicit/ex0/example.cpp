@@ -150,51 +150,6 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         Pointer<Database> input_db = app_initializer->getInputDatabase();
         Pointer<Database> ibfe_db = app_initializer->getComponentDatabase("IBFEMethod");
 
-        // change DX and dependent parameters in the input file if this is a convergence study        
-        if (input_db->getBoolWithDefault("CONVERGENCE_STUDY", false))
-        {
-            
-            int Nnew = 0; istringstream(argv[2]) >> Nnew;
-            int MAX_LEVELS = input_db->getInteger("MAX_LEVELS");
-            int REF_RATIO = input_db->getInteger("REF_RATIO");
-            double MFAC = input_db->getDouble("MFAC");
-            double L = input_db->getDouble("L");
-            
-            double Phi_epsilon = ibfe_db->getDouble("Phi_epsilon");
-          
-            int NFINEST = (pow(REF_RATIO,MAX_LEVELS - 1))*Nnew;   
-            double DX0 = L/(double)Nnew;                                  
-            double DX  = L/(double)NFINEST;
-            double dtdx_ratio = input_db->getDouble("DT")/ input_db->getDouble("DX");
-     
-            input_db->putInteger("N", Nnew);
-            input_db->putInteger("NFINEST", NFINEST);
-            input_db->putDouble("DX0", DX0);
-            input_db->putDouble("DX", DX);
-            input_db->putDouble("DT", dtdx_ratio*DX);
-//            if(!(Phi_epsilon == 0.0)) { ibfe_db->putDouble("Phi_epsilon",pow(MFAC*DX,2.0)); }
-            if(!(Phi_epsilon == 0.0)) { ibfe_db->putDouble("Phi_epsilon", MFAC*DX); }
-            
-            // get Cartesian geometry database 
-            Pointer<Database> cartesian_db = app_initializer->getComponentDatabase("CartesianGeometry");
-            hier::Index<NDIM> lower(0,0);
-            hier::Index<NDIM> upper(Nnew-1,Nnew-1);
-            hier::Box<NDIM> foo_Box(lower,upper);
-            hier::BoxList<NDIM> foo_BoxList(foo_Box);
-            hier::BoxArray<NDIM> domain(foo_BoxList);
-            cartesian_db->putDatabaseBoxArray("domain_boxes", domain);
-            
-            // get different integrator databases
-            Pointer<Database> integrator1_db = app_initializer->getComponentDatabase("IBHierarchyIntegrator");
-            integrator1_db->putDouble("dt_max", dtdx_ratio*DX);
-                        
-            Pointer<Database> integrator2_db = app_initializer->getComponentDatabase("INSCollocatedHierarchyIntegrator");
-            integrator2_db->putDouble("dt_max", dtdx_ratio*DX);
-            
-            Pointer<Database> integrator3_db = app_initializer->getComponentDatabase("INSStaggeredHierarchyIntegrator");
-            integrator3_db->putDouble("dt_max", dtdx_ratio*DX);
-        }
-                
         // Get various standard options set in the input file.
         const bool dump_viz_data = app_initializer->dumpVizData();
         const int viz_dump_interval = app_initializer->getVizDumpInterval();
