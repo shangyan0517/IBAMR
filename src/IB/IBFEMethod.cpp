@@ -2195,7 +2195,6 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                     // for timestepping
                     Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
                 }
-                
             }
         }
         
@@ -2217,7 +2216,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
 
     if ( (Phi_solver.compare("CG")==0) || ( Phi_solver.compare("CG_HEAT") == 0 ) )
     {
-        Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec);
+       Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec);
     }
     
     return;
