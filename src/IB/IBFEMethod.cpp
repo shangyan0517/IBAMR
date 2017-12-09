@@ -289,7 +289,6 @@ void assemble_cg_heat(EquationSystems & es,
     std::vector<dof_id_type> dof_indices;
     
     const Real dt = es.parameters.get<Real> ("dt");
-    std::cout << "AHHHHHH! DT= " << dt << std::endl;
     const Real PENALTY = es.parameters.get<Real> ("cg_poisson_penalty");
         
     MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
@@ -301,7 +300,6 @@ void assemble_cg_heat(EquationSystems & es,
         fe->reinit(elem);
         unsigned int Ke_size = static_cast<unsigned int>(dof_indices.size());
         Ke.resize(Ke_size, Ke_size);
-        Fe.resize(Ke_size);
         for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
         {
             
@@ -1911,7 +1909,6 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& Phi_vec,
             // Apply constraints (e.g., enforce periodic boundary conditions)
             // and add the elemental contributions to the global vector.
             Phi_dof_map.constrain_element_vector(Phi_rhs_e, Phi_dof_indices);
-                        
             Phi_rhs_vec->add_vector(Phi_rhs_e, Phi_dof_indices);
         }
     }
@@ -2019,7 +2016,6 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     Phi_rhs_vec->close();
     Phi_rhs_vec->zero();
     DenseVector<double> Phi_rhs_e;
-    DenseVector<double> Phi_rhs_old_e;
         
     // Set up boundary conditions for Phi.
     TensorValue<double> PP, FF, FF_trans, FF_inv_trans;
@@ -2030,45 +2026,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     {
         Elem* const elem = *el_it;
         bool reinit_all_data = true;
-        
-        fe.reinit(elem);
-        if (reinit_all_data)
-        {
-            Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
-            Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
-            Phi_rhs_old_e.resize(static_cast<int>(Phi_dof_indices.size()));
-            fe.collectDataForInterpolation(elem);
-            reinit_all_data = false;
-        }
-        fe.interpolate(elem);
-        
-        if (Phi_solver.compare("CG_HEAT")==0)
-        {                    
-            for (unsigned int qp = 0; qp < qrule->n_points(); qp++)
-            {
-                
-                Number   Phi_old = 0.0;
-                Gradient grad_Phi_old;
-                
-                // get values of solution and its gradient at the previous timestep
-                for (unsigned int l=0; l<phi.size(); l++)
-                {
-                    Phi_old += phi[l][qp]*Phi_system.old_solution(Phi_dof_indices[l]);
-                    grad_Phi_old.add_scaled (dphi[l][qp],Phi_system.old_solution(Phi_dof_indices[l]));   
-                }
-                
-                for (unsigned int i = 0; i < phi.size(); i++)
-                {
-                    // for timestepping
-                    Phi_rhs_old_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
-                }
-                
-            }
-            
-            Phi_rhs_vec->add_vector(Phi_rhs_old_e, Phi_dof_indices); 
-        }
-        
-        
+       
         for (unsigned short int side = 0; side < elem->n_sides(); ++side)
         {
             // Skip non-physical boundaries.
@@ -2202,17 +2160,53 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                     }    
                     
                 }
-            }
-            
-            if ( ( Phi_solver.compare("CG")==0 ) || ( Phi_solver.compare("CG_HEAT") == 0 ) )
+            }            
+        }
+        
+        // set up interpolation for volume integrals
+        fe.reinit(elem);
+        if (reinit_all_data)
+        {
+            Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
+            Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
+            fe.collectDataForInterpolation(elem);
+            reinit_all_data = false;
+        }
+        fe.interpolate(elem);
+                
+        // volume integral for solution at previous timestep
+        if (Phi_solver.compare("CG_HEAT")==0)
+        {                    
+            for (unsigned int qp = 0; qp < qrule->n_points(); qp++)
             {
-                // Apply constraints (e.g., enforce periodic boundary conditions)
-                // and add the elemental contributions to the global vector.
-                Phi_dof_map.constrain_element_vector(Phi_rhs_e, Phi_dof_indices);
+                
+                Number   Phi_old = 0.0;
+                Gradient grad_Phi_old;
+                
+                // get values of solution and its gradient at the previous timestep
+                for (unsigned int l=0; l<phi.size(); l++)
+                {
+                    Phi_old += phi[l][qp]*Phi_system.old_solution(Phi_dof_indices[l]);
+                    grad_Phi_old.add_scaled (dphi[l][qp],Phi_system.old_solution(Phi_dof_indices[l]));   
+                }
+                
+                for (unsigned int i = 0; i < phi.size(); i++)
+                {
+                    // for timestepping
+                    Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
+                }
+                
             }
-            
-            Phi_rhs_vec->add_vector(Phi_rhs_e, Phi_dof_indices);
-        } 
+        }
+        
+        if ( ( Phi_solver.compare("CG")==0 ) || ( Phi_solver.compare("CG_HEAT") == 0 ) )
+        {
+            // Apply constraints (e.g., enforce periodic boundary conditions)
+            // and add the elemental contributions to the global vector.
+            Phi_dof_map.constrain_element_vector(Phi_rhs_e, Phi_dof_indices);
+        }
+        
+        Phi_rhs_vec->add_vector(Phi_rhs_e, Phi_dof_indices);  
     }
     
     // Solve for Phi.
