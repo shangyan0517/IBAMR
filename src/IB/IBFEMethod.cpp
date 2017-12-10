@@ -2198,6 +2198,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             }
         }
         
+        // FIXME: there is a bug in the periodic BCs, seen for example in IBFE-ex1
+        
         if ( ( Phi_solver.compare("CG")==0 ) || ( Phi_solver.compare("CG_HEAT") == 0 ) )
         {
             // Apply constraints (e.g., enforce periodic boundary conditions)
