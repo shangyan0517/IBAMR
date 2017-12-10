@@ -1760,8 +1760,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
         bool reinit_all_data = true;
         
         
-        std::cout << " \n";
-        std::cout << "elem = " << elem->id() << std::endl;
+        //std::cout << " \n";
+        //std::cout << "elem = " << elem->id() << std::endl;
         
         fe.reinit(elem);
         if (reinit_all_data)
@@ -1909,23 +1909,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                        
                 }
             }
-
-            std::cout << "before constrain Phi_dof_indices size = " << Phi_dof_indices.size() << std::endl;
-
-            
-            if ( (Phi_solver.compare("CG") == 0) || (Phi_solver.compare("CG_HEAT")==0 ) )
-            {
-                // Apply constraints (e.g., enforce periodic boundary conditions)
-                // and add the elemental contributions to the global vector.
-                Phi_dof_map.constrain_element_vector(Phi_rhs_e, Phi_dof_indices);
-            }
-            
-            Phi_rhs_vec->add_vector(Phi_rhs_e, Phi_dof_indices);
-            
-            std::cout << "after constrain Phi_dof_indices size = " << Phi_dof_indices.size() << std::endl;
-            
+                                    
         }
-        
         
         if (Phi_solver.compare("CG_HEAT")==0)
         {
@@ -1945,17 +1930,22 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 for (unsigned int i = 0; i < phi.size(); i++)
                 {
                     // for timestepping
-                    Phi_rhs_old_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
+                    Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
                 }
             
             }
-            
-            std::cout << "Phi_rhs_old_e size = " << Phi_rhs_old_e.size() << std::endl;
-            std::cout << "Phi_dof_indices size = " << Phi_dof_indices.size() << std::endl;
-            Phi_dof_map.constrain_element_vector(Phi_rhs_old_e, Phi_dof_indices);
-            Phi_rhs_vec->add_vector(Phi_rhs_old_e, Phi_dof_indices);
-                        
+                                                
         }
+        
+        if ( (Phi_solver.compare("CG") == 0) || (Phi_solver.compare("CG_HEAT")==0 ) )
+        {
+            // Apply constraints (e.g., enforce periodic boundary conditions)
+            // and add the elemental contributions to the global vector.
+            Phi_dof_map.constrain_element_vector(Phi_rhs_e, Phi_dof_indices);
+        }
+        
+        Phi_rhs_vec->add_vector(Phi_rhs_e, Phi_dof_indices);
+        
     }
 
     // Solve for Phi.
