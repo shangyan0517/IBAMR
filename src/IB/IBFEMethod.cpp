@@ -1747,7 +1747,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     Phi_rhs_vec->zero();
     Phi_rhs_vec->close();
     DenseVector<double> Phi_rhs_e;
-
+    DenseVector<double> Phi_rhs_old_e;
+    
     // Set up boundary conditions for Phi.
     TensorValue<double> PP, FF, FF_trans, FF_inv_trans;
     VectorValue<double> F, F_s, F_qp, n, x;
@@ -1758,40 +1759,22 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
         Elem* const elem = *el_it;
         bool reinit_all_data = true;
         
+        
+        std::cout << " \n";
+        std::cout << "elem = " << elem->id() << std::endl;
+        
         fe.reinit(elem);
         if (reinit_all_data)
         {
             Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
             Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
+            Phi_rhs_old_e.resize(static_cast<int>(Phi_dof_indices.size()));
             fe.collectDataForInterpolation(elem);
             reinit_all_data = false;
         }
         fe.interpolate(elem);
         
-        if (Phi_solver.compare("CG_HEAT")==0)
-        {
-            for (unsigned int qp = 0; qp < qrule->n_points(); qp++)
-            {
-                  
-                Number   Phi_old = 0.0;
-                Gradient grad_Phi_old;
-                
-                // get values of solution and its gradient at the previous timestep
-                for (unsigned int l=0; l<phi.size(); l++)
-                {
-                    Phi_old += phi[l][qp]*Phi_system.old_solution(Phi_dof_indices[l]);
-                    grad_Phi_old.add_scaled (dphi[l][qp], Phi_system.old_solution(Phi_dof_indices[l]));   
-                }
-                
-                for (unsigned int i = 0; i < phi.size(); i++)
-                {
-                    // for timestepping
-                    Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
-                }
-            
-            }
-        }
-        
+     
         for (unsigned short int side = 0; side < elem->n_sides(); ++side)
         {
             // Skip non-physical boundaries.
@@ -1803,13 +1786,13 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             if (at_dirichlet_bdry) continue;
 
             fe.reinit(elem, side);
-            if (reinit_all_data)
+            /*if (reinit_all_data)
             {
                 Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
                 Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
                 fe.collectDataForInterpolation(elem);
                 reinit_all_data = false;
-            }
+            }*/
             fe.interpolate(elem, side);
             const unsigned int n_qp = qrule_face->n_points();
             const size_t n_basis = phi_face.size();
@@ -1927,6 +1910,9 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 }
             }
 
+            std::cout << "before constrain Phi_dof_indices size = " << Phi_dof_indices.size() << std::endl;
+
+            
             if ( (Phi_solver.compare("CG") == 0) || (Phi_solver.compare("CG_HEAT")==0 ) )
             {
                 // Apply constraints (e.g., enforce periodic boundary conditions)
@@ -1935,6 +1921,40 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             }
             
             Phi_rhs_vec->add_vector(Phi_rhs_e, Phi_dof_indices);
+            
+            std::cout << "after constrain Phi_dof_indices size = " << Phi_dof_indices.size() << std::endl;
+            
+        }
+        
+        
+        if (Phi_solver.compare("CG_HEAT")==0)
+        {
+            for (unsigned int qp = 0; qp < qrule->n_points(); qp++)
+            {
+                  
+                Number   Phi_old = 0.0;
+                Gradient grad_Phi_old;
+                
+                // get values of solution and its gradient at the previous timestep
+                for (unsigned int l=0; l<phi.size(); l++)
+                {
+                    Phi_old += phi[l][qp]*Phi_system.old_solution(Phi_dof_indices[l]);
+                    grad_Phi_old.add_scaled (dphi[l][qp], Phi_system.old_solution(Phi_dof_indices[l]));   
+                }
+                
+                for (unsigned int i = 0; i < phi.size(); i++)
+                {
+                    // for timestepping
+                    Phi_rhs_old_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
+                }
+            
+            }
+            
+            std::cout << "Phi_rhs_old_e size = " << Phi_rhs_old_e.size() << std::endl;
+            std::cout << "Phi_dof_indices size = " << Phi_dof_indices.size() << std::endl;
+            Phi_dof_map.constrain_element_vector(Phi_rhs_old_e, Phi_dof_indices);
+            Phi_rhs_vec->add_vector(Phi_rhs_old_e, Phi_dof_indices);
+                        
         }
     }
 
