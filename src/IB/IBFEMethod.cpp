@@ -1955,7 +1955,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     // things for building RHS of Phi linear system based on poisson solver.
     const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
     const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
-    const std::string poisson_solver = equation_systems->parameters.get<std::string> ("Poisson_solver");
+    const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
        
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
@@ -2131,11 +2131,11 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int i = 0; i < n_basis; ++i)
                 {
-                    if (poisson_solver.compare("CG") == 0)
+                    if (Phi_solver.compare("CG") == 0)
                     {
                         Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
                     }
-                    else if (poisson_solver.compare("IPDG") == 0)
+                    else if (Phi_solver.compare("IPDG") == 0)
                     {
                         
                         Phi_rhs_e(i) += JxW_face[qp] * Phi * ipdg_poisson_penalty/h_elem * phi_face[i][qp];
@@ -2149,7 +2149,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 }
             }
 
-            if (poisson_solver.compare("CG")==0)
+            if (Phi_solver.compare("CG")==0)
             {
                 // Apply constraints (e.g., enforce periodic boundary conditions)
                 // and add the elemental contributions to the global vector.
@@ -2166,7 +2166,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     Phi_system.solution->close();
     Phi_system.solution->localize(Phi_vec);
         
-    if (poisson_solver.compare("CG")==0)
+    if (Phi_solver.compare("CG")==0)
     {
         Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec);
     }
