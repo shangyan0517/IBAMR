@@ -1747,7 +1747,6 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     Phi_rhs_vec->zero();
     Phi_rhs_vec->close();
     DenseVector<double> Phi_rhs_e;
-    DenseVector<double> Phi_rhs_old_e;
     
     // Set up boundary conditions for Phi.
     TensorValue<double> PP, FF, FF_trans, FF_inv_trans;
@@ -1758,17 +1757,12 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     {
         Elem* const elem = *el_it;
         bool reinit_all_data = true;
-        
-        
-        //std::cout << " \n";
-        //std::cout << "elem = " << elem->id() << std::endl;
-        
+ 
         fe.reinit(elem);
         if (reinit_all_data)
         {
             Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
             Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
-            Phi_rhs_old_e.resize(static_cast<int>(Phi_dof_indices.size()));
             fe.collectDataForInterpolation(elem);
             reinit_all_data = false;
         }
@@ -1786,13 +1780,13 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             if (at_dirichlet_bdry) continue;
 
             fe.reinit(elem, side);
-            /*if (reinit_all_data)
+            if (reinit_all_data)
             {
                 Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
                 Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
                 fe.collectDataForInterpolation(elem);
                 reinit_all_data = false;
-            }*/
+            }
             fe.interpolate(elem, side);
             const unsigned int n_qp = qrule_face->n_points();
             const size_t n_basis = phi_face.size();
