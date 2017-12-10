@@ -1673,7 +1673,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     // Setup extra data needed to compute stresses/forces.
 
     // Extract the FE systems and DOF maps, and setup the FE objects.
-    LinearImplicitSystem& Phi_system = equation_systems->get_system<LinearImplicitSystem>(PHI_SYSTEM_NAME);
+    TransientLinearImplicitSystem& Phi_system = equation_systems->get_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
     const DofMap& Phi_dof_map = Phi_system.get_dof_map();
     FEDataManager::SystemDofMapCache& Phi_dof_map_cache = *d_fe_data_managers[part]->getDofMapCache(PHI_SYSTEM_NAME);
     std::vector<unsigned int> Phi_dof_indices;
@@ -1688,16 +1688,21 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
     const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
     const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
+    const Real dt = equation_systems->parameters.get<Real> ("dt");
        
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
     for (unsigned int d = 0; d < NDIM; ++d) X_vars[d] = d;
 
     FEDataInterpolation fe(dim, d_fe_data_managers[part]);
+    UniquePtr<QBase> qrule = QBase::build(QGAUSS, dim, FIFTH);
     UniquePtr<QBase> qrule_face = QBase::build(QGAUSS, dim - 1, FIFTH);
+    fe.attachQuadratureRule(qrule.get());
     fe.attachQuadratureRuleFace(qrule_face.get());
     fe.evalNormalsFace();
+    fe.evalQuadraturePoints();
     fe.evalQuadraturePointsFace();
+    fe.evalQuadratureWeights();
     fe.evalQuadratureWeightsFace();
     fe.registerSystem(Phi_system, Phi_vars, Phi_vars); // compute phi and dphi for the Phi system
     const size_t X_sys_idx = fe.registerInterpolatedSystem(X_system, X_vars, X_vars, &X_vec);
@@ -1722,6 +1727,12 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const std::vector<std::vector<double> >& phi_face = fe.getPhiFace(Phi_fe_type);
     const std::vector<std::vector<libMesh::VectorValue<double> > >& dphi_face = fe.getDphiFace(Phi_fe_type);
 
+    // things for RHS vector in case we are timestepping for Phi i.e. solving the heat equation.
+    const std::vector<libMesh::Point>& q_point = fe.getQuadraturePoints();
+    const std::vector<double>& JxW = fe.getQuadratureWeights();
+    const std::vector<std::vector<double> >& phi = fe.getPhi(Phi_fe_type);
+    const std::vector<std::vector<libMesh::VectorValue<double> > >& dphi = fe.getDphi(Phi_fe_type);
+    
     const std::vector<std::vector<std::vector<double> > >& fe_interp_var_data = fe.getVarInterpolation();
     const std::vector<std::vector<std::vector<VectorValue<double> > > >& fe_interp_grad_var_data =
         fe.getGradVarInterpolation();
@@ -1746,6 +1757,41 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     {
         Elem* const elem = *el_it;
         bool reinit_all_data = true;
+        
+        fe.reinit(elem);
+        if (reinit_all_data)
+        {
+            Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
+            Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
+            fe.collectDataForInterpolation(elem);
+            reinit_all_data = false;
+        }
+        fe.interpolate(elem);
+        
+        if (Phi_solver.compare("CG_HEAT")==0)
+        {
+            for (unsigned int qp = 0; qp < qrule->n_points(); qp++)
+            {
+                  
+                Number   Phi_old = 0.0;
+                Gradient grad_Phi_old;
+                
+                // get values of solution and its gradient at the previous timestep
+                for (unsigned int l=0; l<phi.size(); l++)
+                {
+                    Phi_old += phi[l][qp]*Phi_system.old_solution(Phi_dof_indices[l]);
+                    grad_Phi_old.add_scaled (dphi[l][qp], Phi_system.old_solution(Phi_dof_indices[l]));   
+                }
+                
+                for (unsigned int i = 0; i < phi.size(); i++)
+                {
+                    // for timestepping
+                    Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
+                }
+            
+            }
+        }
+        
         for (unsigned short int side = 0; side < elem->n_sides(); ++side)
         {
             // Skip non-physical boundaries.
@@ -1863,7 +1909,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int i = 0; i < n_basis; ++i)
                 {
-                    if (Phi_solver.compare("CG") == 0)
+                    if ( (Phi_solver.compare("CG") == 0) || (Phi_solver.compare("CG_HEAT")==0 ) )
                     {
                         Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
                     }
@@ -1881,7 +1927,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 }
             }
 
-            if (Phi_solver.compare("CG")==0)
+            if ( (Phi_solver.compare("CG") == 0) || (Phi_solver.compare("CG_HEAT")==0 ) )
             {
                 // Apply constraints (e.g., enforce periodic boundary conditions)
                 // and add the elemental contributions to the global vector.
@@ -1898,7 +1944,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     Phi_system.solution->close();
     Phi_system.solution->localize(Phi_vec);
         
-    if (Phi_solver.compare("CG")==0)
+    if ( (Phi_solver.compare("CG") == 0) || (Phi_solver.compare("CG_HEAT")==0 ) )
     {
         Phi_dof_map.enforce_constraints_exactly(Phi_system, &Phi_vec);
     }
