@@ -285,7 +285,6 @@ void assemble_cg_heat(EquationSystems & es,
     const std::vector<Real>& JxW_face = fe_face->get_JxW();
     
     DenseMatrix<Number> Ke;
-    DenseVector<Number> Fe;
     std::vector<dof_id_type> dof_indices;
     
     const Real dt = es.parameters.get<Real> ("dt");
@@ -316,7 +315,7 @@ void assemble_cg_heat(EquationSystems & es,
         for (unsigned int side = 0; side < elem->n_sides(); side++)
         {
             // penalty method to apply boundary conditions
-            if (elem->neighbor(side) == libmesh_nullptr)
+            if (is_physical_bdry(elem, side, boundary_info, dof_map))
             {
                 fe_face->reinit(elem, side);
                 for (unsigned int qp = 0; qp < qface.n_points(); qp++)
@@ -1689,7 +1688,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
     const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
     const Real dt = equation_systems->parameters.get<Real> ("dt");
-       
+           
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
     for (unsigned int d = 0; d < NDIM; ++d) X_vars[d] = d;
@@ -1926,7 +1925,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                     // for timestepping
                     Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
                 }
-            
+                
             }
                                                 
         }
