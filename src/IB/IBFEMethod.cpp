@@ -1425,6 +1425,8 @@ IBFEMethod::initializeFEData()
                 d_X_systems[part] = &d_equation_systems[part]->get_system(COORDS_SYSTEM_NAME);
                 d_X_current_vecs[part] = dynamic_cast<PetscVector<double>*>(d_X_systems[part]->current_local_solution.get());
                 d_X_systems[part]->solution->localize(*d_X_current_vecs[part]);
+                Phi_system.assemble_before_solve = false;
+                Phi_system.assemble();
                 init_cg_heat(*d_X_current_vecs[part], part);
                 // attach heat equation assemble function
                 Phi_system.attach_assemble_function(assemble_cg_heat); 
@@ -1907,22 +1909,9 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
     
     // Solve for Phi.
     Phi_rhs_vec->close();
-    
-    //std::cout << "RHS = \n";
-    Phi_system.rhs->print_matlab("rhs.m");
-    
     Phi_system.solve();
-        
-    //std::cout << "MATRIX = \n";
-    Phi_system.matrix->print_matlab("matrix.mat");
-    
     Phi_dof_map.enforce_constraints_exactly(Phi_system);
-    
     Phi_system.solution->close();
-    
-    //std::cout << "SOLUTION = \n";
-    //Phi_system.solution->print();
-    
     //Phi_system.solution->localize(*Phi_system.current_local_solution);         
     *Phi_system.old_local_solution = *Phi_system.current_local_solution;
     
@@ -2199,7 +2188,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                     Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
                 }
                 
-                std::cout << "Phi_old = " << Phi_old << std::endl;
+               // std::cout << "Phi_old = " << Phi_old << std::endl;
                 
             }
                                                 
