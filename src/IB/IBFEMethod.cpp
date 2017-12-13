@@ -762,6 +762,8 @@ assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
         dof_map.constrain_element_matrix(Ke, dof_indices);
         system.matrix->add_matrix(Ke, dof_indices);
     }
+    
+    system.matrix->close();
 }
 
 std::string
@@ -1375,6 +1377,10 @@ IBFEMethod::initializeFEData()
     if (d_fe_data_initialized) return;
     initializeFEEquationSystems();
     const bool from_restart = RestartManager::getManager()->isFromRestart();
+    
+     d_X_current_vecs.resize(d_num_parts);
+     d_X_systems.resize(d_num_parts);
+    
     for (unsigned int part = 0; part < d_num_parts; ++part)
     {
         // Initialize FE equation systems.
@@ -1417,8 +1423,10 @@ IBFEMethod::initializeFEData()
             {
                 // attach assemble function for computing initial condition as solution to 
                 // steady state heat equation
-                d_X_half_vecs.resize(d_num_parts);
-                init_cg_heat(*d_X_half_vecs[part], part);
+                d_X_systems[part] = &d_equation_systems[part]->get_system(COORDS_SYSTEM_NAME);
+                d_X_current_vecs[part] = dynamic_cast<PetscVector<double>*>(d_X_systems[part]->current_local_solution.get());
+                d_X_systems[part]->solution->localize(*d_X_current_vecs[part]);
+                init_cg_heat(*d_X_current_vecs[part], part);
                 // attach heat equation assemble function
                 Phi_system.attach_assemble_function(assemble_cg_heat); 
             }    
@@ -1672,6 +1680,10 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
                               unsigned int part)
 {
 
+    std::cout << "------------------------------"  << std::endl; 
+    std::cout << "in INIT CG HEAT" << std::endl;
+    std::cout << "------------------------------"  << std::endl;    
+    
     // Extract the mesh.
     EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
     const MeshBase& mesh = equation_systems->get_mesh();
@@ -1696,9 +1708,6 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
     
     // things for building RHS of Phi linear system based on poisson solver.
     const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
-    const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
-    const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
-    const Real dt = equation_systems->parameters.get<Real> ("dt");
     
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
@@ -1767,16 +1776,6 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
     {
         Elem* const elem = *el_it;
         bool reinit_all_data = true;
-        
-        fe.reinit(elem);
-        if (reinit_all_data)
-        {
-            Phi_dof_map_cache.dof_indices(elem, Phi_dof_indices);
-            Phi_rhs_e.resize(static_cast<int>(Phi_dof_indices.size()));
-            fe.collectDataForInterpolation(elem);
-            reinit_all_data = false;
-        }
-        fe.interpolate(elem);
         
         for (unsigned short int side = 0; side < elem->n_sides(); ++side)
         {
@@ -1895,9 +1894,7 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int i = 0; i < n_basis; ++i)
                 {
-                  
-                        Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
-                                 
+                    Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
                 }
             }
             
@@ -1911,13 +1908,26 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
     
     // Solve for Phi.
     Phi_rhs_vec->close();
+    
+    //std::cout << "RHS = \n";
+    //Phi_system.rhs->print();
+    
     Phi_system.solve();
+        
+    //std::cout << "MATRIX = \n";
+    //Phi_system.matrix->print();
+    
     Phi_dof_map.enforce_constraints_exactly(Phi_system);
+    
     Phi_system.solution->close();
+    
+    std::cout << "SOLUTION = \n";
+    Phi_system.solution->print();
+    
+    //Phi_system.solution->localize(*Phi_system.current_local_solution);         
     *Phi_system.old_local_solution = *Phi_system.current_local_solution;
     
     return;
-    
 }
 
 
