@@ -720,7 +720,6 @@ assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
     const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
     
     const Real PENALTY = es.parameters.get<Real> ("cg_poisson_penalty");
-
     
     MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
     const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
@@ -1910,19 +1909,19 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
     Phi_rhs_vec->close();
     
     //std::cout << "RHS = \n";
-    //Phi_system.rhs->print();
+    Phi_system.rhs->print_matlab("rhs.m");
     
     Phi_system.solve();
         
     //std::cout << "MATRIX = \n";
-    //Phi_system.matrix->print();
+    Phi_system.matrix->print_matlab("matrix.mat");
     
     Phi_dof_map.enforce_constraints_exactly(Phi_system);
     
     Phi_system.solution->close();
     
-    std::cout << "SOLUTION = \n";
-    Phi_system.solution->print();
+    //std::cout << "SOLUTION = \n";
+    //Phi_system.solution->print();
     
     //Phi_system.solution->localize(*Phi_system.current_local_solution);         
     *Phi_system.old_local_solution = *Phi_system.current_local_solution;
