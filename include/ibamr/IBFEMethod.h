@@ -523,8 +523,7 @@ protected:
      * \brief Function to initialize the stress normalization field Phi
      * when it satisfies the heat equation.
      */
-    void init_cg_heat(libMesh::PetscVector<double>& Phi_vec,
-                      libMesh::PetscVector<double>& X_vec,
+    void init_cg_heat(libMesh::PetscVector<double>& X_vec,
                       unsigned int part);
     
     /*
