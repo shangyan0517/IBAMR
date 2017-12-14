@@ -289,6 +289,7 @@ void assemble_cg_heat(EquationSystems & es,
     
     const Real dt = es.parameters.get<Real> ("dt");
     const Real PENALTY = es.parameters.get<Real> ("cg_poisson_penalty");
+    const Real diffusion = es.parameters.get<Real> ("Phi_diffusion");
         
     MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
     const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
@@ -307,7 +308,7 @@ void assemble_cg_heat(EquationSystems & es,
             
                 for (unsigned int j = 0; j < phi.size(); j++)
                 {
-                    Ke(i, j) += (phi[i][qp] * phi[j][qp] + 0.5*dt*(dphi[i][qp] * dphi[j][qp])) * JxW[qp];
+                    Ke(i, j) += (phi[i][qp] * phi[j][qp] + diffusion * 0.5*dt*(dphi[i][qp] * dphi[j][qp])) * JxW[qp];
                 }
             }
         }
@@ -338,7 +339,7 @@ void assemble_cg_heat(EquationSystems & es,
     
 }
 
-
+// for building linear system to compute DG approximation to the stress normalization function
 void assemble_ipdg_poisson(EquationSystems & es,
                            const std::string & system_name)
 {
@@ -358,6 +359,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
     
     const double epsilon = es.parameters.get<Real>("Phi_epsilon");
     const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
+    const Real diffusion = es.parameters.get<Real> ("Phi_diffusion");
     
     // had to remove the 'const' qualifier for dof_map because I need info about periodic boundaries
     DofMap& dof_map = ellipticdg_system.get_dof_map();
@@ -408,49 +410,25 @@ void assemble_ipdg_poisson(EquationSystems & es,
     
     for ( ; el != end_el; ++el)
     {  
-        // Store a pointer to the element we are currently
-        // working on.  This allows for nicer syntax later.
+   
         const Elem * elem = *el;
-        
-        // Get the degree of freedom indices for the
-        // current element.  These define where in the global
-        // matrix and right-hand-side this element will
-        // contribute to.
         dof_map.dof_indices (elem, dof_indices);
         const unsigned int n_dofs = dof_indices.size();
-        
-        // Compute the element-specific data for the current
-        // element.  This involves computing the location of the
-        // quadrature points (q_point) and the shape functions
-        // (phi, dphi) for the current element.
+    
         fe->reinit (elem);
-        
-        // Zero the element matrix and right-hand side before
-        // summing them.  We use the resize member here because
-        // the number of degrees of freedom might have changed from
-        // the last element.
         Ke.resize (n_dofs, n_dofs);
-           
-        // Now we will build the element interior matrix and the source term.  
-        // For the element interior matrix
-        // this involves a double loop to integrate the test functions (i) against
-        // the trial functions (j).
+ 
         for (unsigned int qp=0; qp<qrule.n_points(); qp++)
         {
             for (unsigned int i=0; i<n_dofs; i++)
             {
                 for (unsigned int j=0; j<n_dofs; j++)
                 {
-                    Ke(i,j) += JxW[qp]*(epsilon_inv*phi[i][qp]*phi[j][qp] + dphi[i][qp]*dphi[j][qp]);
+                    Ke(i,j) += JxW[qp]*(epsilon_inv*phi[i][qp]*phi[j][qp] + diffusion  * dphi[i][qp]*dphi[j][qp]);
                 }
             }
         }
-        
-        
-        // The following loops over the sides of the element.
-        // if the side is not on the physical boundary
-        // then it must either be on a periodic boundary or
-        // an interior side.
+
         for (unsigned int side=0; side<elem->n_sides(); side++)
         {
             if (is_physical_bdry(elem, side, boundary_info, dof_map))
@@ -471,11 +449,11 @@ void assemble_ipdg_poisson(EquationSystems & es,
                         for (unsigned int j=0; j<n_dofs; j++)
                         {
                             // stability
-                            Ke(i,j) += JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[i][qp] * phi_face[j][qp];
+                            Ke(i,j) += diffusion  * JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[i][qp] * phi_face[j][qp];
                             
                             // consistency
                             Ke(i,j) -=
-                                    JxW_face[qp] *
+                                    diffusion  * JxW_face[qp] *
                                     (phi_face[i][qp] * (dphi_face[j][qp]*qface_normals[qp]) +
                                     phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
                         }
@@ -515,12 +493,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
                 // Get the global id of the element and the neighbor
                 const unsigned int elem_id = elem->id();
                 const unsigned int neighbor_id = neighbor->id();
-                
-                // If the neighbor has the same h level and is active
-                // perform integration only if our global id is bigger than our neighbor id.
-                // We don't want to compute twice the same contributions.
-                // If the neighbor has a different h level perform integration
-                // only if the neighbor is at a lower level.
+
                 if ((neighbor->active() &&
                         (neighbor->level() == elem->level()) &&
                         (elem_id < neighbor_id)) ||
@@ -565,28 +538,16 @@ void assemble_ipdg_poisson(EquationSystems & es,
                     // Calculate the neighbor element shape functions at those locations
                     fe_neighbor_face->reinit(neighbor, &temp);
                                        
-                    // Get the degree of freedom indices for the
-                    // neighbor.  These define where in the global
-                    // matrix this neighbor will contribute to.
+   
                     std::vector<dof_id_type> neighbor_dof_indices;
                     dof_map.dof_indices (neighbor, neighbor_dof_indices);
                     const unsigned int n_neighbor_dofs = neighbor_dof_indices.size();
                     
-                    // Zero the element and neighbor side matrix before
-                    // summing them.  We use the resize member here because
-                    // the number of degrees of freedom might have changed from
-                    // the last element or neighbor.
-                    // Note that Kne and Ken are not square matrices if neighbor
-                    // and element have a different p level
                     Kne.resize (n_neighbor_dofs, n_dofs);
                     Ken.resize (n_dofs, n_neighbor_dofs);
                     Kee.resize (n_dofs, n_dofs);
                     Knn.resize (n_neighbor_dofs, n_neighbor_dofs);
-                    
-                    // Now we will build the element and neighbor
-                    // boundary matrices.  This involves
-                    // a double loop to integrate the test funcions
-                    // (i) against the trial functions (j).
+      
                     for (unsigned int qp=0; qp<qface.n_points(); qp++)
                     {
                         // Kee Matrix. Integrate the element test function i
@@ -658,10 +619,12 @@ void assemble_ipdg_poisson(EquationSystems & es,
                             }
                         }
                     }
+
+                    Kne *= diffusion;
+                    Ken *= diffusion;
+                    Knn *= diffusion;                    
+                    Kee *= diffusion;
                     
-                    // The element and neighbor boundary matrix are now built
-                    // for this side.  Add them to the global matrix
-                    // The SparseMatrix::add_matrix() members do this for us.
                     ellipticdg_system.matrix->add_matrix(Kne, neighbor_dof_indices, dof_indices);
                     ellipticdg_system.matrix->add_matrix(Ken, dof_indices, neighbor_dof_indices);
                     ellipticdg_system.matrix->add_matrix(Kee, dof_indices);
@@ -670,17 +633,11 @@ void assemble_ipdg_poisson(EquationSystems & es,
                 }
             }
         }
-        
-        
-        // The element interior matrix aTensornd right-hand-side are now built
-        // for this element.  Add them to the global matrix and
-        // right-hand-side vector.  The SparseMatrix::add_matrix()
-        // and NumericVector::add_vector() members do this for us.
+
         ellipticdg_system.matrix->add_matrix(Ke, dof_indices);
      }
     
     ellipticdg_system.matrix->close();
-     
 }
 
 
@@ -720,6 +677,7 @@ assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
     const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
     
     const Real PENALTY = es.parameters.get<Real> ("cg_poisson_penalty");
+    const Real diffusion = es.parameters.get<Real> ("Phi_diffusion");
     
     MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
     const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
@@ -736,7 +694,7 @@ assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
             {
                 for (unsigned int j = 0; j < phi.size(); j++)
                 {
-                    Ke(i, j) += (epsilon_inv * phi[i][qp] * phi[j][qp] + (dphi[i][qp] * dphi[j][qp])) * JxW[qp];
+                    Ke(i, j) += (epsilon_inv * phi[i][qp] * phi[j][qp] + diffusion*(dphi[i][qp] * dphi[j][qp])) * JxW[qp];
                 }
             }
         }
@@ -862,6 +820,7 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
     d_equation_systems[part]->parameters.set<std::string>("Phi_solver") = Phi_solver;
     d_equation_systems[part]->parameters.set<Real>("dt") = Phi_dt;
+    d_equation_systems[part]->parameters.set<Real>("Phi_diffusion") = Phi_diffusion;
 
     // assign function for building Phi linear system.  defaults to CG discretization
     if(Phi_solver.compare("CG") == 0) 
@@ -3425,6 +3384,7 @@ IBFEMethod::commonConstructor(const std::string& object_name,
     Phi_fe_order = static_cast<libMesh::Order>(1);
     cg_poisson_penalty = 1e10;
     Phi_solver = "CG";
+    Phi_diffusion = 1.0;
     d_has_stress_normalization_parts = false;
     d_stress_normalization_part.resize(d_num_parts, false);
 
@@ -3609,6 +3569,7 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     
     // get info for stress normalization
     if (db->isDouble("Phi_epsilon")) d_epsilon = db->getDouble("Phi_epsilon");
+    Phi_diffusion = db->getDouble("Phi_diffusion");
     Phi_solver = db->getString("Phi_solver");
     ipdg_poisson_penalty = db->getDouble("ipdg_poisson_penalty");
     cg_poisson_penalty = db->getDouble("cg_poisson_penalty");
