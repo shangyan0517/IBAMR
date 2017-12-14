@@ -1908,6 +1908,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
     const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
     const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
+    const Real diffusion = equation_systems->parameters.get<Real> ("Phi_diffusion");
     const Real dt = equation_systems->parameters.get<Real> ("dt");
            
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
@@ -2113,8 +2114,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                     else if (Phi_solver.compare("IPDG") == 0)
                     {
                         
-                        Phi_rhs_e(i) += JxW_face[qp] * Phi * ipdg_poisson_penalty/h_elem * phi_face[i][qp];
-                        Phi_rhs_e(i) -= JxW_face[qp] * dphi_face[i][qp] * (Phi*normal_face[qp]);
+                        Phi_rhs_e(i) += diffusion * JxW_face[qp] * Phi * ipdg_poisson_penalty/h_elem * phi_face[i][qp];
+                        Phi_rhs_e(i) -= diffusion * JxW_face[qp] * dphi_face[i][qp] * (Phi*normal_face[qp]);
                     }
                     else // default solver to CG
                     {
@@ -2144,10 +2145,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 for (unsigned int i = 0; i < phi.size(); i++)
                 {
                     // for timestepping
-                    Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - 0.5*dt*grad_Phi_old * dphi[i][qp] );
+                    Phi_rhs_e(i) += JxW[qp] * ( Phi_old*phi[i][qp] - diffusion * 0.5*dt*grad_Phi_old * dphi[i][qp] );
                 }
-                
-               // std::cout << "Phi_old = " << Phi_old << std::endl;
                 
             }
                                                 
