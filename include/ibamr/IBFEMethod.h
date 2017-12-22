@@ -610,6 +610,7 @@ protected:
     std::vector<libMesh::QuadratureType> d_default_quad_type;
     std::vector<libMesh::Order> d_default_quad_order;
     bool d_use_consistent_mass_matrix;
+    double d_kappa, d_eta, d_tau;
 
     /*
      * Data related to handling stress normalization.

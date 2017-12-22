@@ -294,6 +294,58 @@ assemble_poisson(EquationSystems& es, const std::string& /*system_name*/)
     }
 }
 
+void
+assemble_df_dt(EquationSystems& es, const std::string& /*system_name*/)
+{
+    const MeshBase& mesh = es.get_mesh();
+    const BoundaryInfo& boundary_info = *mesh.boundary_info;
+    const unsigned int dim = mesh.mesh_dimension();
+    LinearImplicitSystem& system = es.get_system<LinearImplicitSystem>(IBFEMethod::FORCE_SYSTEM_NAME);
+    const DofMap& dof_map = system.get_dof_map();
+    std::vector<dof_id_type> dof_indices;
+    FEType fe_type = dof_map.variable_type(0);
+    UniquePtr<FEBase> fe(FEBase::build(dim, fe_type));
+    QGauss qrule(dim, FIFTH);
+    fe->attach_quadrature_rule(&qrule);
+    const std::vector<Real>& JxW = fe->get_JxW();
+    const std::vector<std::vector<Real> >& phi = fe->get_phi();
+
+    const double tau = es.parameters.get<Real>("tau");
+    const double dt = es.parameters.get<Real>("dt");
+
+    DenseMatrix<Number> Ke;
+    MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
+    const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+    for (; el != end_el; ++el)
+    {
+        const Elem* elem = *el;
+        fe->reinit(elem);
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            dof_map.dof_indices(elem, dof_indices, d);
+            unsigned int Ke_size = static_cast<unsigned int>(dof_indices.size());
+            Ke.resize(Ke_size, Ke_size);
+            for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+            {
+                for (unsigned int i = 0; i < phi.size(); i++)
+                {
+                    for (unsigned int j = 0; j < phi.size(); j++)
+                    {
+#if 1
+                        Ke(i, j) += phi[i][qp] * phi[j][qp] * JxW[qp];
+#else
+                        Ke(i, j) += (tau / dt + 1.0) * phi[i][qp] * phi[j][qp] * JxW[qp];
+#endif
+                    }
+                }
+            }
+            dof_map.constrain_element_matrix(Ke, dof_indices);
+            system.matrix->add_matrix(Ke, dof_indices);
+        }
+    }
+    system.matrix->close();
+}
+
 std::string
 libmesh_restart_file_name(const std::string& restart_dump_dirname,
                           unsigned int time_step_number,
@@ -709,11 +761,123 @@ IBFEMethod::computeLagrangianForce(const double data_time)
     TBOX_ASSERT(MathUtilities<double>::equalEps(data_time, d_half_time));
     for (unsigned part = 0; part < d_num_parts; ++part)
     {
+#if 0
         if (d_stress_normalization_part[part])
         {
             computeStressNormalization(*d_Phi_half_vecs[part], *d_X_half_vecs[part], data_time, part);
         }
         computeInteriorForceDensity(*d_F_half_vecs[part], *d_X_half_vecs[part], d_Phi_half_vecs[part], data_time, part);
+#else
+        const double dt = d_new_time - d_current_time;
+
+        // Extract the mesh.
+        EquationSystems* equation_systems = d_fe_data_managers[part]->getEquationSystems();
+        const MeshBase& mesh = equation_systems->get_mesh();
+        const unsigned int dim = mesh.mesh_dimension();
+
+        // Extract the FE systems and DOF maps, and setup the FE object.
+        LinearImplicitSystem& F_system = equation_systems->get_system<LinearImplicitSystem>(FORCE_SYSTEM_NAME);
+        const DofMap& F_dof_map = F_system.get_dof_map();
+        std::vector<std::vector<unsigned int> > F_dof_indices(NDIM);
+        FEType F_fe_type = F_dof_map.variable_type(0);
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            TBOX_ASSERT(F_dof_map.variable_type(d) == F_fe_type);
+        }
+        System& U_system = equation_systems->get_system(VELOCITY_SYSTEM_NAME);
+        const DofMap& U_dof_map = U_system.get_dof_map();
+        std::vector<std::vector<unsigned int> > U_dof_indices(NDIM);
+        FEType U_fe_type = U_dof_map.variable_type(0);
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            TBOX_ASSERT(U_dof_map.variable_type(d) == U_fe_type);
+            TBOX_ASSERT(U_dof_map.variable_type(d) == F_fe_type);
+        }
+        System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
+        const DofMap& X_dof_map = X_system.get_dof_map();
+        std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
+        FEType X_fe_type = X_dof_map.variable_type(0);
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            TBOX_ASSERT(X_dof_map.variable_type(d) == X_fe_type);
+            TBOX_ASSERT(X_dof_map.variable_type(d) == F_fe_type);
+        }
+        std::vector<int> vars(NDIM);
+        for (unsigned int d = 0; d < NDIM; ++d) vars[d] = d;
+
+        UniquePtr<FEBase> fe(FEBase::build(dim, F_fe_type));
+        QGauss qrule(dim, FIFTH);
+        fe->attach_quadrature_rule(&qrule);
+        const std::vector<Real>& JxW = fe->get_JxW();
+        const std::vector<libMesh::Point>& q_point = fe->get_xyz();
+        const std::vector<std::vector<Real> >& phi = fe->get_phi();
+
+        equation_systems->parameters.set<Real>("tau") = d_tau;
+        equation_systems->parameters.set<Real>("dt") = dt;
+        F_system.assemble_before_solve = false;
+        F_system.assemble();
+
+        NumericVector<double>* F_rhs_vec = F_system.rhs;
+        F_rhs_vec->zero();
+        std::vector<DenseVector<double> > F_rhs_e(NDIM);
+        VectorValue<double> F_qp, U_qp, X_qp, x_qp;
+        VectorValue<double> F_oo, U_oo;
+        boost::multi_array<double, 2> F_node, U_node, x_node;
+        const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
+        const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
+        for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
+        {
+            Elem* const elem = *el_it;
+            for (unsigned int d = 0; d < NDIM; ++d)
+            {
+                F_dof_map.dof_indices(elem, F_dof_indices[d], d);
+                U_dof_map.dof_indices(elem, U_dof_indices[d], d);
+                X_dof_map.dof_indices(elem, X_dof_indices[d], d);
+                F_rhs_e[d].resize(static_cast<int>(F_dof_indices[d].size()));
+            }
+            fe->reinit(elem);
+            get_values_for_interpolation(F_node,
+                                         *F_system.current_local_solution,
+                                         F_dof_indices); // XXXX: THIS NEEDS TO BE THE REAL CURRENT SOLUTION!
+            get_values_for_interpolation(U_node, *d_U_half_vecs[part], U_dof_indices);
+            get_values_for_interpolation(x_node, *d_X_half_vecs[part], X_dof_indices);
+            for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+            {
+                const libMesh::Point& X_qp = q_point[qp];
+                interpolate(F_qp, qp, F_node, phi);
+                interpolate(U_qp, qp, U_node, phi);
+                interpolate(x_qp, qp, x_node, phi);
+                F_oo = d_kappa * (X_qp - x_qp) - d_eta * U_qp;
+                U_oo = -d_kappa * U_qp;
+                for (unsigned int i = 0; i < phi.size(); i++)
+                {
+                    for (unsigned int d = 0; d < NDIM; ++d)
+                    {
+#if 1
+                        F_rhs_e[d](i) += (F_qp(d) - dt * d_kappa * U_qp(d)) * phi[i][qp] * JxW[qp];
+#else
+                        F_rhs_e[d](i) += ((d_tau / dt) * F_qp(d) + F_oo(d)) * phi[i][qp] * JxW[qp];
+#endif
+                    }
+                }
+            }
+            for (unsigned int d = 0; d < NDIM; ++d)
+            {
+                F_dof_map.constrain_element_vector(F_rhs_e[d], F_dof_indices[d]);
+                F_rhs_vec->add_vector(F_rhs_e[d], F_dof_indices[d]);
+            }
+        }
+        F_rhs_vec->close();
+        F_system.solution->close();
+
+        pout << "about to solve for F!\n";
+        F_system.solve();
+        F_system.solution->close();
+        F_system.solution->localize(*F_system.current_local_solution);
+        F_system.solution->localize(*d_F_half_vecs[part]);
+        pout << "F_rhs norm = " << F_rhs_vec->l2_norm() << "\n";
+        pout << "F norm = " << F_system.solution->l2_norm() << "\n";
+#endif
     }
     return;
 } // computeLagrangianForce
@@ -840,13 +1004,14 @@ IBFEMethod::initializeFEEquationSystems()
                 U_system.add_variable(os.str(), d_fe_order[part], d_fe_family[part]);
             }
 
-            System& F_system = equation_systems->add_system<System>(FORCE_SYSTEM_NAME);
+            System& F_system = equation_systems->add_system<LinearImplicitSystem>(FORCE_SYSTEM_NAME);
             for (unsigned int d = 0; d < NDIM; ++d)
             {
                 std::ostringstream os;
                 os << "F_" << d;
                 F_system.add_variable(os.str(), d_fe_order[part], d_fe_family[part]);
             }
+            F_system.attach_assemble_function(assemble_df_dt);
         }
     }
     d_fe_equation_systems_initialized = true;
@@ -889,8 +1054,10 @@ IBFEMethod::initializeFEData()
         U_system.assemble_before_solve = false;
         U_system.assemble();
 
+#if 0
         F_system.assemble_before_solve = false;
         F_system.assemble();
+#endif
 
         if (d_stress_normalization_part[part])
         {
@@ -2509,6 +2676,9 @@ IBFEMethod::commonConstructor(const std::string& object_name,
     d_split_tangential_force = false;
     d_use_jump_conditions = false;
     d_use_consistent_mass_matrix = true;
+    d_kappa = 0.0;
+    d_eta = 0.0;
+    d_tau = 0.0;
     d_do_log = false;
 
     d_fe_family.resize(d_num_parts, INVALID_FE);
@@ -2676,6 +2846,10 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     if (db->isBool("use_jump_conditions")) d_use_jump_conditions = db->getBool("use_jump_conditions");
     if (db->isBool("use_consistent_mass_matrix"))
         d_use_consistent_mass_matrix = db->getBool("use_consistent_mass_matrix");
+
+    if (db->isDouble("kappa")) d_kappa = db->getDouble("kappa");
+    if (db->isDouble("eta")) d_eta = db->getDouble("eta");
+    if (db->isDouble("tau")) d_tau = db->getDouble("tau");
 
     // Restart settings.
     if (db->isString("libmesh_restart_file_extension"))
