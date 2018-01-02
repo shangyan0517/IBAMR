@@ -331,7 +331,7 @@ assemble_df_dt(EquationSystems& es, const std::string& /*system_name*/)
                 {
                     for (unsigned int j = 0; j < phi.size(); j++)
                     {
-#if 1
+#if 0
                         Ke(i, j) += phi[i][qp] * phi[j][qp] * JxW[qp];
 #else
                         Ke(i, j) += (tau / dt + 1.0) * phi[i][qp] * phi[j][qp] * JxW[qp];
@@ -848,12 +848,11 @@ IBFEMethod::computeLagrangianForce(const double data_time)
                 interpolate(U_qp, qp, U_node, phi);
                 interpolate(x_qp, qp, x_node, phi);
                 F_oo = d_kappa * (X_qp - x_qp) - d_eta * U_qp;
-                U_oo = -d_kappa * U_qp;
                 for (unsigned int i = 0; i < phi.size(); i++)
                 {
                     for (unsigned int d = 0; d < NDIM; ++d)
                     {
-#if 1
+#if 0
                         F_rhs_e[d](i) += (F_qp(d) - dt * d_kappa * U_qp(d)) * phi[i][qp] * JxW[qp];
 #else
                         F_rhs_e[d](i) += ((d_tau / dt) * F_qp(d) + F_oo(d)) * phi[i][qp] * JxW[qp];
