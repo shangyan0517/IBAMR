@@ -835,8 +835,9 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     }
     else if(Phi_solver.compare("CG_HEAT") == 0)
     {
-        // Phi_system.attach_init_function(init_cg_heat_project);
-        // Phi_system.attach_assemble_function(assemble_cg_heat);
+        // here we attach first the assemble function for poisson to have the 
+        // initial conditions for the heat equation be computed as the solution
+        // to the steady state heat equation
         Phi_system.attach_assemble_function(assemble_cg_poisson);
         Phi_system.add_variable("Phi Heat", d_fe_order[part], d_fe_family[part]);
     }
@@ -1387,7 +1388,7 @@ IBFEMethod::initializeFEData()
                 Phi_system.assemble_before_solve = false;
                 Phi_system.assemble();
                 init_cg_heat(*d_X_current_vecs[part], part);
-                // attach heat equation assemble function
+                // now we attach heat equation assemble function
                 Phi_system.attach_assemble_function(assemble_cg_heat); 
             }    
             
