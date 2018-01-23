@@ -2879,6 +2879,7 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
                         T_bdry[idx + i] = F(i);
+                        if (d_eliminate_pressure_jumps && d_split_normal_force) T_bdry[idx + i] = 0.0; 
                     }
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
@@ -3379,6 +3380,7 @@ IBFEMethod::commonConstructor(const std::string& object_name,
 
     // Indicate that all of the parts do NOT use stress normalization by default
     // and set some default values.
+    d_eliminate_pressure_jumps = false;
     d_epsilon = 0.0;
     ipdg_poisson_penalty = 2.0;
     Phi_fe_order = static_cast<libMesh::Order>(1);
@@ -3568,6 +3570,7 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
         d_do_log = db->getBool("enable_logging");
     
     // get info for stress normalization
+    if (db->isBool("eliminate_pressure_jumps")) d_eliminate_pressure_jumps = db->getBool("eliminate_pressure_jumps");
     if (db->isDouble("Phi_epsilon")) d_epsilon = db->getDouble("Phi_epsilon");
     Phi_diffusion = db->getDouble("Phi_diffusion");
     Phi_solver = db->getString("Phi_solver");
