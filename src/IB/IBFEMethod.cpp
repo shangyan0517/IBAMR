@@ -2740,7 +2740,7 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
         d_fe_data_managers[part]->getActivePatchElementMap();
     const int level_num = d_fe_data_managers[part]->getLevelNumber();
     TensorValue<double> PP, FF, FF_inv_trans;
-    VectorValue<double> Phi_surface, F, F_s, n, x;
+    VectorValue<double> F, F_s, n, x;
     double P;
     std::vector<double> T_bdry, x_bdry;
     Pointer<PatchLevel<NDIM> > level = d_hierarchy->getPatchLevel(level_num);
@@ -2814,7 +2814,7 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
                         // Compute the value of the first Piola-Kirchhoff stress tensor
                         // at the quadrature point and add the corresponding forces to
                         // the right-hand-side vector.
-                        Phi_surface = J * Phi * FF_inv_trans * normal_face[qp] * JxW_face[qp];
+                        F += J * Phi * FF_inv_trans * normal_face[qp] * JxW_face[qp];
                     }
                     
                     for (unsigned int k = 0; k < num_PK1_fcns; ++k)
