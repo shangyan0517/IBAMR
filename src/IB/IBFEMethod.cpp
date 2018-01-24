@@ -2443,8 +2443,8 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
         surface_pressure_grad_var_data;
 
     // Loop over the elements to compute the right-hand side vector.
-    TensorValue<double> PP, FF, FF_inv_trans;
-    VectorValue<double> PPsurface, F, F_b, F_s, F_qp, n, x;
+    TensorValue<double> FF, FF_inv_trans, Phi_vol;
+    VectorValue<double> Phi_surface, F, F_b, F_s, F_qp, n, x;
     boost::multi_array<double, 2> X_node;
     boost::multi_array<double, 1> Phi_node;
     const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
@@ -2479,10 +2479,10 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                 // Compute the value of the first Piola-Kirchhoff stress tensor
                 // at the quadrature point and add the corresponding forces to
                 // the right-hand-side vector.
-                PP = -J * Phi * FF_inv_trans;
+                Phi_vol = -J * Phi * FF_inv_trans;
                 for (unsigned int k = 0; k < n_basis; ++k)
                 {
-                    F_qp = -PP * dphi[k][qp] * JxW[qp];
+                    F_qp = -Phi_vol * dphi[k][qp] * JxW[qp];
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
                         G_rhs_e[i](k) += F_qp(i);
@@ -2544,27 +2544,6 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                 tensor_inverse_transpose(FF_inv_trans, FF, NDIM);
                 n = (FF_inv_trans * normal_face[qp]).unit();
                 F.zero();
-                
-                // FIXME: this is suppose to make the split forces flag work with stress normalization
-                // but it doesn't work at the moment.
-                /*  const double Phi =
-                Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
-                // for surface stress normalization term
-                if (Phi_vec && d_split_normal_force)
-                {
-                    // Compute the value of the first Piola-Kirchhoff stress tensor
-                    // at the quadrature point and add the corresponding forces to
-                    // the right-hand-side vector.
-                    PPsurface = -J * Phi * FF_inv_trans * normal_face[qp];
-                    for (unsigned int k = 0; k < n_basis; ++k)
-                    {
-                        F_qp = PPsurface * phi_face[k][qp] * JxW_face[qp];
-                        for (unsigned int i = 0; i < NDIM; ++i)
-                        {
-                            G_rhs_e[i](k) += F_qp(i);
-                        }
-                    }
-                }*/
                
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
                 {
@@ -2616,10 +2595,29 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                 // Remove the tangential component of the boundary force when needed.
                 if (!integrate_tangential_force) F -= (F - (F * n) * n);
                 
+                // FIXME: this is suppose to make the split forces flag work with stress normalization
+                // but it doesn't work at the moment.
+                const double Phi =
+                     Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
+                // for surface stress normalization term
+                if (Phi_vec)
+                {
+                    // Compute the value of the first Piola-Kirchhoff stress tensor
+                    // at the quadrature point and add the corresponding forces to
+                    // the right-hand-side vector.
+                    Phi_surface = -J * Phi * FF_inv_trans * normal_face[qp];
+                    
+                    if (!((d_split_normal_force && !at_dirichlet_bdry) || (!d_split_normal_force && at_dirichlet_bdry)))
+                    { Phi_surface -= (Phi_surface * n) * n; }
+                    
+                    if (!((d_split_tangential_force && !at_dirichlet_bdry) || (!d_split_tangential_force && at_dirichlet_bdry)))
+                    { Phi_surface -= (Phi_surface - (Phi_surface * n) * n); }
+                }
+                
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int k = 0; k < n_basis; ++k)
                 {
-                    F_qp = F * phi_face[k][qp] * JxW_face[qp];
+                    F_qp = ( F + Phi_surface ) * phi_face[k][qp] * JxW_face[qp];
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
                         G_rhs_e[i](k) += F_qp(i);
