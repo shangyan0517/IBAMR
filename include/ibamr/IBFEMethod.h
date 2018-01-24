@@ -550,6 +550,7 @@ protected:
      * of the Lagrangian structure.
      */
     void spreadTransmissionForceDensity(int f_data_idx,
+                                        libMesh::PetscVector<double>* Phi_vec,
                                         libMesh::PetscVector<double>& X_ghost_vec,
                                         IBTK::RobinPhysBdryPatchStrategy* f_phys_bdry_op,
                                         double data_time,
@@ -633,7 +634,6 @@ protected:
      * Data related to handling stress normalization.
      */
     double d_epsilon;
-    bool d_eliminate_pressure_jumps;
     double ipdg_poisson_penalty;
     libMesh::Order Phi_fe_order;
     double cg_poisson_penalty;

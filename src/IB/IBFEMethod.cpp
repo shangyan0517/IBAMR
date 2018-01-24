@@ -1208,6 +1208,7 @@ IBFEMethod::spreadForce(const int f_data_idx,
         PetscVector<double>* X_ghost_vec = d_X_IB_ghost_vecs[part];
         PetscVector<double>* F_vec = d_F_half_vecs[part];
         PetscVector<double>* F_ghost_vec = d_F_IB_ghost_vecs[part];
+        PetscVector<double>* Phi_vec = d_Phi_half_vecs[part];
         X_vec->localize(*X_ghost_vec);
         F_vec->localize(*F_ghost_vec);
         d_fe_data_managers[part]->spread(
@@ -1220,7 +1221,7 @@ IBFEMethod::spreadForce(const int f_data_idx,
             }
             if (!d_use_jump_conditions || d_split_tangential_force)
             {
-                spreadTransmissionForceDensity(f_data_idx, *X_ghost_vec, f_phys_bdry_op, data_time, part);
+                spreadTransmissionForceDensity(f_data_idx, Phi_vec, *X_ghost_vec, f_phys_bdry_op, data_time, part);
             }
         }
     }
@@ -2642,6 +2643,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
 
 void
 IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
+                                           PetscVector<double>* Phi_vec,
                                            PetscVector<double>& X_ghost_vec,
                                            RobinPhysBdryPatchStrategy* f_phys_bdry_op,
                                            const double data_time,
@@ -2650,8 +2652,7 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
     if (!d_split_normal_force && !d_split_tangential_force) return;
 
     // Check to see if we need to integrate the surface forces.
-    const bool integrate_normal_force =
-        d_split_normal_force && !d_use_jump_conditions && !d_stress_normalization_part[part];
+    const bool integrate_normal_force = d_split_normal_force && !d_use_jump_conditions;
     const bool integrate_tangential_force = d_split_tangential_force;
     if (!integrate_normal_force && !integrate_tangential_force) return;
 
@@ -2680,6 +2681,9 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
     const unsigned int dim = mesh.mesh_dimension();
 
     // Extract the FE systems and DOF maps, and setup the FE object.
+    System* Phi_system = Phi_vec ? &equation_systems->get_system(PHI_SYSTEM_NAME) : NULL;
+    std::vector<int> Phi_vars(1, 0);
+    std::vector<int> no_vars;
     System& G_system = equation_systems->get_system(FORCE_SYSTEM_NAME);
     const DofMap& G_dof_map = G_system.get_dof_map();
     FEType G_fe_type = G_dof_map.variable_type(0);
@@ -2691,7 +2695,6 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> vars(NDIM);
     for (unsigned int d = 0; d < NDIM; ++d) vars[d] = d;
-    std::vector<int> no_vars;
 
     FEDataInterpolation fe(dim, d_fe_data_managers[part]);
     UniquePtr<QBase> default_qrule_face = QBase::build(d_default_quad_type[part], dim - 1, d_default_quad_order[part]);
@@ -2701,6 +2704,8 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
     fe.evalQuadraturePointsFace();
     fe.evalQuadratureWeightsFace();
     const size_t X_sys_idx = fe.registerInterpolatedSystem(X_system, vars, vars, &X_ghost_vec);
+    const size_t Phi_sys_idx = Phi_vec ? fe.registerInterpolatedSystem(*Phi_system, Phi_vars, no_vars, Phi_vec) :
+                                         std::numeric_limits<size_t>::max();
     const size_t num_PK1_fcns = d_PK1_stress_fcn_data[part].size();
     std::vector<std::vector<size_t> > PK1_fcn_system_idxs(num_PK1_fcns);
     for (unsigned int k = 0; k < num_PK1_fcns; ++k)
@@ -2735,7 +2740,7 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
         d_fe_data_managers[part]->getActivePatchElementMap();
     const int level_num = d_fe_data_managers[part]->getLevelNumber();
     TensorValue<double> PP, FF, FF_inv_trans;
-    VectorValue<double> F, F_s, n, x;
+    VectorValue<double> Phi_surface, F, F_s, n, x;
     double P;
     std::vector<double> T_bdry, x_bdry;
     Pointer<PatchLevel<NDIM> > level = d_hierarchy->getPatchLevel(level_num);
@@ -2801,6 +2806,17 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
 
                     F.zero();
 
+                    // for surface stress normalization term
+                    const double Phi =
+                     Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
+                    if (Phi_vec)
+                    {
+                        // Compute the value of the first Piola-Kirchhoff stress tensor
+                        // at the quadrature point and add the corresponding forces to
+                        // the right-hand-side vector.
+                        Phi_surface = J * Phi * FF_inv_trans * normal_face[qp] * JxW_face[qp];
+                    }
+                    
                     for (unsigned int k = 0; k < num_PK1_fcns; ++k)
                     {
                         if (d_PK1_stress_fcn_data[part][k].fcn)
@@ -2877,7 +2893,7 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
                         T_bdry[idx + i] = F(i);
-                        if (d_eliminate_pressure_jumps && d_split_normal_force) T_bdry[idx + i] = 0.0; 
+                        if (d_stress_normalization_part[part] && d_split_normal_force) T_bdry[idx + i] = 0.0; 
                     }
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
@@ -3378,7 +3394,6 @@ IBFEMethod::commonConstructor(const std::string& object_name,
 
     // Indicate that all of the parts do NOT use stress normalization by default
     // and set some default values.
-    d_eliminate_pressure_jumps = false;
     d_epsilon = 0.0;
     ipdg_poisson_penalty = 2.0;
     Phi_fe_order = static_cast<libMesh::Order>(1);
@@ -3568,7 +3583,6 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
         d_do_log = db->getBool("enable_logging");
     
     // get info for stress normalization
-    if (db->isBool("eliminate_pressure_jumps")) d_eliminate_pressure_jumps = db->getBool("eliminate_pressure_jumps");
     if (db->isDouble("Phi_epsilon")) d_epsilon = db->getDouble("Phi_epsilon");
     Phi_diffusion = db->getDouble("Phi_diffusion");
     Phi_solver = db->getString("Phi_solver");
