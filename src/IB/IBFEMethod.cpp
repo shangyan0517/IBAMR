@@ -1211,8 +1211,8 @@ IBFEMethod::spreadForce(const int f_data_idx,
         PetscVector<double>* Phi_vec = d_Phi_half_vecs[part];
         X_vec->localize(*X_ghost_vec);
         F_vec->localize(*F_ghost_vec);
-        d_fe_data_managers[part]->spread(
-            f_data_idx, *F_ghost_vec, *X_ghost_vec, FORCE_SYSTEM_NAME, f_phys_bdry_op, data_time);
+        // d_fe_data_managers[part]->spread(
+        //    f_data_idx, *F_ghost_vec, *X_ghost_vec, FORCE_SYSTEM_NAME, f_phys_bdry_op, data_time);
         if (d_split_normal_force || d_split_tangential_force)
         {
             if (d_use_jump_conditions && d_split_normal_force)
@@ -1221,7 +1221,7 @@ IBFEMethod::spreadForce(const int f_data_idx,
             }
             if (!d_use_jump_conditions || d_split_tangential_force)
             {
-                spreadTransmissionForceDensity(f_data_idx, Phi_vec, *X_ghost_vec, f_phys_bdry_op, data_time, part);
+                //spreadTransmissionForceDensity(f_data_idx, Phi_vec, *X_ghost_vec, f_phys_bdry_op, data_time, part);
             }
         }
     }
@@ -2444,10 +2444,8 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
         surface_pressure_grad_var_data;
 
     // Loop over the elements to compute the right-hand side vector.
-    TensorValue<double> FF, FF_inv_trans, Phi_vol;
-    VectorValue<double> Phi_surface, F, F_b, F_s, F_qp, n, x;
-    boost::multi_array<double, 2> X_node;
-    boost::multi_array<double, 1> Phi_node;
+    TensorValue<double> PP, FF, FF_inv_trans, Phi_vol;
+    VectorValue<double> T, F, F_b, F_s, F_qp, n, x, Phi_surface;
     const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
     const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
     for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
@@ -2598,12 +2596,25 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                 
                 // FIXME: this is suppose to make the split forces flag work with stress normalization
                 // but it doesn't work at the moment.
-                const double Phi =
-                     Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
                 // for surface stress normalization term
+                const double Phi =
+                    Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
                 if (Phi_vec)
                 {
-                    // Compute the value of the first Piola-Kirchhoff stress tensor
+                    
+                    // Compute the value of the traction at the quadrature
+                    // point and add the corresponding force to the
+                    // right-hand-side vector.
+                    const bool integrate_normal_force =
+                        (d_split_normal_force && !at_dirichlet_bdry) || (!d_split_normal_force && at_dirichlet_bdry);
+                    const bool integrate_tangential_force = (d_split_tangential_force && !at_dirichlet_bdry) ||
+                        (!d_split_tangential_force && at_dirichlet_bdry);
+                    PP = -J * Phi * FF_inv_trans;
+                    T = PP * normal_face[qp];
+                    if (integrate_normal_force) F += (T * n) * n;
+                    if (integrate_tangential_force) F += (T - (T * n) * n);
+                    
+                   /* // Compute the value of the first Piola-Kirchhoff stress tensor
                     // at the quadrature point and add the corresponding forces to
                     // the right-hand-side vector.
                     Phi_surface = -J * Phi * FF_inv_trans * normal_face[qp];
@@ -2612,7 +2623,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                     { Phi_surface -= (Phi_surface * n) * n; }
                     
                     if (!((d_split_tangential_force && !at_dirichlet_bdry) || (!d_split_tangential_force && at_dirichlet_bdry)))
-                    { Phi_surface -= (Phi_surface - (Phi_surface * n) * n); }
+                    { Phi_surface -= (Phi_surface - (Phi_surface * n) * n); }*/
                 }
                 
                 // Add the boundary forces to the right-hand-side vector.
@@ -2893,7 +2904,6 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
                         T_bdry[idx + i] = F(i);
-                        if (d_stress_normalization_part[part] && d_split_normal_force) T_bdry[idx + i] = 0.0; 
                     }
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
