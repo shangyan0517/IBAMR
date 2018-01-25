@@ -2629,7 +2629,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int k = 0; k < n_basis; ++k)
                 {
-                    F_qp = ( F + Phi_surface ) * phi_face[k][qp] * JxW_face[qp];
+                    F_qp = F * phi_face[k][qp] * JxW_face[qp];
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
                         G_rhs_e[i](k) += F_qp(i);
@@ -2903,8 +2903,8 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
                     const int idx = NDIM * qp_offset;
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
+                        //if(d_stress_normalization_part[part] && d_split_normal_force) F -= (F * n) * n;
                         T_bdry[idx + i] = F(i);
-                        if(d_stress_normalization_part[part] && d_split_normal_force) T_bdry[idx+1] = 0.0;
                     }
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
