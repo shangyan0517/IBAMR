@@ -1211,8 +1211,8 @@ IBFEMethod::spreadForce(const int f_data_idx,
         PetscVector<double>* Phi_vec = d_Phi_half_vecs[part];
         X_vec->localize(*X_ghost_vec);
         F_vec->localize(*F_ghost_vec);
-        // d_fe_data_managers[part]->spread(
-        //    f_data_idx, *F_ghost_vec, *X_ghost_vec, FORCE_SYSTEM_NAME, f_phys_bdry_op, data_time);
+        d_fe_data_managers[part]->spread(
+            f_data_idx, *F_ghost_vec, *X_ghost_vec, FORCE_SYSTEM_NAME, f_phys_bdry_op, data_time);
         if (d_split_normal_force || d_split_tangential_force)
         {
             if (d_use_jump_conditions && d_split_normal_force)
@@ -1221,7 +1221,7 @@ IBFEMethod::spreadForce(const int f_data_idx,
             }
             if (!d_use_jump_conditions || d_split_tangential_force)
             {
-                //spreadTransmissionForceDensity(f_data_idx, Phi_vec, *X_ghost_vec, f_phys_bdry_op, data_time, part);
+                spreadTransmissionForceDensity(f_data_idx, Phi_vec, *X_ghost_vec, f_phys_bdry_op, data_time, part);
             }
         }
     }
@@ -2904,6 +2904,7 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
                         T_bdry[idx + i] = F(i);
+                        if(d_stress_normalization_part[part] && d_split_normal_force) T_bdry[idx+1] = 0.0;
                     }
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
