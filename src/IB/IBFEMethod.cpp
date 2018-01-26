@@ -32,7 +32,6 @@
 
 /////////////////////////////// INCLUDES /////////////////////////////////////
 
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -2080,6 +2079,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                                                            data_time,
                                                            d_lag_surface_force_fcn_data[part].ctx);
                     Phi -= n * F_s * dA_da;
+                    Phi = 0.0;
                 }
 
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
@@ -2105,7 +2105,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                                                               d_lag_surface_pressure_fcn_data[part].ctx);
                     Phi += P;
                 }
-
+                              
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int i = 0; i < n_basis; ++i)
                 {
@@ -2903,7 +2903,7 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
                     const int idx = NDIM * qp_offset;
                     for (unsigned int i = 0; i < NDIM; ++i)
                     {
-                        //if(d_stress_normalization_part[part] && d_split_normal_force) F -= (F * n) * n;
+                        if(d_stress_normalization_part[part] && d_split_normal_force) F -= (F * n) * n;
                         T_bdry[idx + i] = F(i);
                     }
                     for (unsigned int i = 0; i < NDIM; ++i)
