@@ -2079,7 +2079,6 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                                                            data_time,
                                                            d_lag_surface_force_fcn_data[part].ctx);
                     Phi -= n * F_s * dA_da;
-                    Phi = 0.0;
                 }
 
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
@@ -2601,7 +2600,6 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                     Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
                 if (Phi_vec)
                 {
-                    
                     // Compute the value of the traction at the quadrature
                     // point and add the corresponding force to the
                     // right-hand-side vector.
@@ -2613,17 +2611,6 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                     T = PP * normal_face[qp];
                     if (integrate_normal_force) F += (T * n) * n;
                     if (integrate_tangential_force) F += (T - (T * n) * n);
-                    
-                   /* // Compute the value of the first Piola-Kirchhoff stress tensor
-                    // at the quadrature point and add the corresponding forces to
-                    // the right-hand-side vector.
-                    Phi_surface = -J * Phi * FF_inv_trans * normal_face[qp];
-                    
-                    if (!((d_split_normal_force && !at_dirichlet_bdry) || (!d_split_normal_force && at_dirichlet_bdry)))
-                    { Phi_surface -= (Phi_surface * n) * n; }
-                    
-                    if (!((d_split_tangential_force && !at_dirichlet_bdry) || (!d_split_tangential_force && at_dirichlet_bdry)))
-                    { Phi_surface -= (Phi_surface - (Phi_surface * n) * n); }*/
                 }
                 
                 // Add the boundary forces to the right-hand-side vector.
