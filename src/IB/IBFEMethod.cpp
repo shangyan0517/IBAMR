@@ -2477,7 +2477,15 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                 // Compute the value of the first Piola-Kirchhoff stress tensor
                 // at the quadrature point and add the corresponding forces to
                 // the right-hand-side vector.
-                Phi_vol = -J * Phi * FF_inv_trans;
+                if(scale_Phi_by_J)
+                {
+                    Phi_vol = -J * Phi * FF_inv_trans;
+                }
+                else
+                {
+                    Phi_vol = -Phi * FF_inv_trans;
+                }
+                
                 for (unsigned int k = 0; k < n_basis; ++k)
                 {
                     F_qp = -Phi_vol * dphi[k][qp] * JxW[qp];
@@ -2607,7 +2615,14 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
                         (d_split_normal_force && !at_dirichlet_bdry) || (!d_split_normal_force && at_dirichlet_bdry);
                     const bool integrate_tangential_force = (d_split_tangential_force && !at_dirichlet_bdry) ||
                         (!d_split_tangential_force && at_dirichlet_bdry);
-                    PP = -J * Phi * FF_inv_trans;
+                    if(scale_Phi_by_J)
+                    {
+                        PP = -J * Phi * FF_inv_trans;
+                    }
+                    else
+                    {
+                        PP = -Phi * FF_inv_trans;
+                    }
                     T = PP * normal_face[qp];
                     if (integrate_normal_force) F += (T * n) * n;
                     if (integrate_tangential_force) F += (T - (T * n) * n);
@@ -2812,7 +2827,14 @@ IBFEMethod::spreadTransmissionForceDensity(const int f_data_idx,
                         // Compute the value of the first Piola-Kirchhoff stress tensor
                         // at the quadrature point and add the corresponding forces to
                         // the right-hand-side vector.
-                        F += J * Phi * FF_inv_trans * normal_face[qp] * JxW_face[qp];
+                        if(scale_Phi_by_J)
+                        {
+                            F += J * Phi * FF_inv_trans * normal_face[qp] * JxW_face[qp];
+                        }
+                        else
+                        {
+                            F += Phi * FF_inv_trans * normal_face[qp] * JxW_face[qp];
+                        }
                     }
                     
                     for (unsigned int k = 0; k < num_PK1_fcns; ++k)
@@ -3398,6 +3420,7 @@ IBFEMethod::commonConstructor(const std::string& object_name,
     cg_poisson_penalty = 1e10;
     Phi_solver = "CG";
     Phi_diffusion = 1.0;
+    scale_Phi_by_J = false;
     d_has_stress_normalization_parts = false;
     d_stress_normalization_part.resize(d_num_parts, false);
 
@@ -3584,6 +3607,7 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     if (db->isDouble("Phi_epsilon")) d_epsilon = db->getDouble("Phi_epsilon");
     Phi_diffusion = db->getDouble("Phi_diffusion");
     Phi_solver = db->getString("Phi_solver");
+    scale_Phi_by_J = db->getBool("scale_Phi_by_J");
     ipdg_poisson_penalty = db->getDouble("ipdg_poisson_penalty");
     cg_poisson_penalty = db->getDouble("cg_poisson_penalty");
     Phi_dt = db->getDouble("Phi_dt");

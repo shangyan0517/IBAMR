@@ -640,6 +640,7 @@ protected:
     double Phi_dt;
     double Phi_diffusion;
     std::string Phi_solver;
+    bool scale_Phi_by_J;
     bool d_has_stress_normalization_parts;
     std::vector<bool> d_stress_normalization_part;
 
