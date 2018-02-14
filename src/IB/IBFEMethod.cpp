@@ -2039,7 +2039,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
 
                 // Here we build up the boundary value for Phi.
                 double Phi = 0.0;
-                for (unsigned int k = 0; k < num_PK1_fcns; ++k)
+                //for (unsigned int k = 0; k < num_PK1_fcns; ++k)
+                for (unsigned int k = 0; k < 1; ++k)
                 {
                     if (d_PK1_stress_fcn_data[part][k].fcn)
                     {
@@ -2057,7 +2058,14 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                                                            PK1_grad_var_data[k],
                                                            data_time,
                                                            d_PK1_stress_fcn_data[part][k].ctx);
-                        Phi += n * ((PP * FF_trans) * n) / J;
+                        if(scale_Phi_by_J)
+                        {
+                            Phi += n * ((PP * FF_trans) * n) / J;
+                        }
+                        else
+                        {
+                            Phi += n * ((PP * FF_trans) * n);
+                        }
                     }
                 }
 
@@ -2078,7 +2086,14 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                                                            surface_force_grad_var_data,
                                                            data_time,
                                                            d_lag_surface_force_fcn_data[part].ctx);
-                    Phi -= n * F_s * dA_da;
+                    if(scale_Phi_by_J)
+                    {
+                        Phi -= n * F_s * dA_da;
+                    }
+                    else
+                    {
+                        Phi -= J * n * F_s * dA_da;
+                    }
                 }
 
                 if (d_lag_surface_pressure_fcn_data[part].fcn)
@@ -2102,7 +2117,15 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                                                               surface_pressure_grad_var_data,
                                                               data_time,
                                                               d_lag_surface_pressure_fcn_data[part].ctx);
-                    Phi += P;
+                    if(scale_Phi_by_J)
+                    {
+                        Phi += P;
+                    }
+                    else
+                    {
+                        Phi += J * P;
+                    }
+                        
                 }
                               
                 // Add the boundary forces to the right-hand-side vector.
@@ -2471,6 +2494,7 @@ IBFEMethod::computeInteriorForceDensity(PetscVector<double>& G_vec,
             const double Phi =
                 Phi_vec ? fe_interp_var_data[qp][Phi_sys_idx][0] : std::numeric_limits<double>::quiet_NaN();
 
+            
             // for volumetric stress normalization term
             if (Phi_vec)
             {
@@ -3420,7 +3444,7 @@ IBFEMethod::commonConstructor(const std::string& object_name,
     cg_poisson_penalty = 1e10;
     Phi_solver = "CG";
     Phi_diffusion = 1.0;
-    scale_Phi_by_J = false;
+    scale_Phi_by_J = true;
     d_has_stress_normalization_parts = false;
     d_stress_normalization_part.resize(d_num_parts, false);
 
