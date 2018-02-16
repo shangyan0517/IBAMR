@@ -2092,7 +2092,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                     }
                     else
                     {
-                        Phi -= J * n * F_s * dA_da;
+                        // Phi -= J * n * F_s * dA_da;
+                        Phi -= n * F_s * dA_da;
                     }
                 }
 
@@ -2123,7 +2124,8 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                     }
                     else
                     {
-                        Phi += J * P;
+                        //Phi += J * P;
+                        Phi += P;
                     }
                         
                 }
