@@ -110,6 +110,7 @@
 #include "libmesh/point_locator_base.h"
 #include "libmesh/point_locator_list.h"
 #include "libmesh/periodic_boundaries.h"
+#include "libmesh/periodic_boundary.h"
 #include "libmesh/transient_system.h"
 #include "petscvec.h"
 #include "tbox/Array.h"
@@ -381,14 +382,12 @@ void assemble_ipdg_poisson(EquationSystems & es,
     const std::vector<Real> & JxW = fe->get_JxW();
     const std::vector<std::vector<RealGradient> > & dphi = fe->get_dphi();
     const std::vector<std::vector<Real> > &  phi = fe->get_phi();
-    const std::vector<Point> & qvolume_points = fe->get_xyz();
     
     //  for surface integrals
     const std::vector<std::vector<Real> > &  phi_face = fe_elem_face->get_phi();
     const std::vector<std::vector<RealGradient> > & dphi_face = fe_elem_face->get_dphi();
     const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
     const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
-    const std::vector<Point> & qface_points = fe_elem_face->get_xyz();
       
     // for surface integrals on the neighbor boundary
     const std::vector<std::vector<Real> > &  phi_neighbor_face = fe_neighbor_face->get_phi();
@@ -523,7 +522,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
                     {
                         // grab the boundary id (sideset id) of the neighbor side
                         const short int bdry_id = boundary_info.boundary_id(neighbor, neighbor_side);
-                        PeriodicBoundaryBase* periodic_boundary = periodic_boundaries->boundary(bdry_id);
+                        libMesh::PeriodicBoundaryBase* periodic_boundary = periodic_boundaries->boundary(bdry_id);
                         
                         // re init this temporarily to get the physical locations of the 
                         // quad points on the the neighbor side
@@ -546,8 +545,8 @@ void assemble_ipdg_poisson(EquationSystems & es,
                         {  
                             for (int jj = 0; jj < qface_neighbor_point.size(); ++jj)
                             {
-                                Point pp = periodic_boundary->get_corresponding_pos(qface_neighbor_point[jj]);
-                                Point diff = qface_point[ii] - pp;
+                                libMesh::Point pp = periodic_boundary->get_corresponding_pos(qface_neighbor_point[jj]);
+                                libMesh::Point diff = qface_point[ii] - pp;
                                 if(diff.norm()/qface_point[ii].norm() < TOLERANCE)
                                 {
                                     temp.push_back(qface_neighbor_ref_point[jj]);
@@ -1944,7 +1943,6 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const Real ipdg_jump0_penalty = equation_systems->parameters.get<Real> ("ipdg_jump0_penalty");
     const Real ipdg_jump1_penalty = equation_systems->parameters.get<Real> ("ipdg_jump1_penalty");
     const Real ipdg_beta0 = equation_systems->parameters.get<Real> ("ipdg_beta0");
-    const Real ipdg_beta1 = equation_systems->parameters.get<Real> ("ipdg_beta1");
     const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
     const Real diffusion = equation_systems->parameters.get<Real> ("Phi_diffusion");
     const Real dt = equation_systems->parameters.get<Real> ("dt");
@@ -2052,7 +2050,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             
             // for the IPDG penalty parameter   
             UniquePtr<Elem> elem_side (elem->build_side(side));
-            const double h0_elem = pow(elem->volume()/elem_side->volume(),beta0);
+            const double h0_elem = pow(elem->volume()/elem_side->volume(),ipdg_beta0);
             
             for (unsigned int qp = 0; qp < n_qp; ++qp)
             {
