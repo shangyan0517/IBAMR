@@ -287,7 +287,7 @@ void assemble_cg_heat(EquationSystems & es,
     std::vector<dof_id_type> dof_indices;
     
     const Real dt = es.parameters.get<Real> ("dt");
-    const Real PENALTY = es.parameters.get<Real> ("cg_poisson_penalty");
+    const Real PENALTY = es.parameters.get<Real> ("cg_penalty");
     const Real diffusion = es.parameters.get<Real> ("Phi_diffusion");
         
     MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
@@ -342,7 +342,7 @@ void assemble_cg_heat(EquationSystems & es,
 void assemble_ipdg_poisson(EquationSystems & es,
                            const std::string & system_name)
 {
-    
+  
     std::cout << "------------------------------"  << std::endl; 
     std::cout << "in IPDG assemble" << std::endl;
     std::cout << "------------------------------"  << std::endl; 
@@ -353,16 +353,15 @@ void assemble_ipdg_poisson(EquationSystems & es,
     point_locator.build(TREE_ELEMENTS, mesh);
     if(point_locator.initialized()) { std::cout << "point locator initialized" << std::endl; } 
     const unsigned int dim = mesh.mesh_dimension();
-    TransientLinearImplicitSystem& ellipticdg_system = es.get_system<TransientLinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
-    const Real ipdg_poisson_penalty = es.parameters.get<Real> ("ipdg_poisson_penalty");
-    
-    const double epsilon = es.parameters.get<Real>("Phi_epsilon");
-    const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
-    const Real diffusion = es.parameters.get<Real> ("Phi_diffusion");
-    
+    LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>("EllipticDG");
+    const Real jump0_penalty = es.parameters.get<Real> ("ipdg_jump0_penalty");
+    const Real jump1_penalty = es.parameters.get<Real> ("ipdg_jump1_penalty");
+    const Real beta0 = es.parameters.get<Real> ("ipdg_beta0");
+    const Real beta1 = es.parameters.get<Real> ("ipdg_beta1");
+        
     // had to remove the 'const' qualifier for dof_map because I need info about periodic boundaries
     DofMap& dof_map = ellipticdg_system.get_dof_map();
-    PeriodicBoundaries * periodic_boundaries = dof_map.get_periodic_boundaries();
+    PeriodicBoundaries* periodic_boundaries = dof_map.get_periodic_boundaries();
     
     FEType fe_type = ellipticdg_system.variable_type(0);
     
@@ -377,18 +376,20 @@ void assemble_ipdg_poisson(EquationSystems & es,
     QGauss qface(dim-1, fe_type.default_quadrature_order());
     fe_elem_face->attach_quadrature_rule(&qface);
     fe_neighbor_face->attach_quadrature_rule(&qface);
-    
+       
     // for volume integrals
     const std::vector<Real> & JxW = fe->get_JxW();
     const std::vector<std::vector<RealGradient> > & dphi = fe->get_dphi();
     const std::vector<std::vector<Real> > &  phi = fe->get_phi();
+    const std::vector<Point> & qvolume_points = fe->get_xyz();
     
     //  for surface integrals
     const std::vector<std::vector<Real> > &  phi_face = fe_elem_face->get_phi();
     const std::vector<std::vector<RealGradient> > & dphi_face = fe_elem_face->get_dphi();
     const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
     const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
-    
+    const std::vector<Point> & qface_points = fe_elem_face->get_xyz();
+      
     // for surface integrals on the neighbor boundary
     const std::vector<std::vector<Real> > &  phi_neighbor_face = fe_neighbor_face->get_phi();
     const std::vector<std::vector<RealGradient> > & dphi_neighbor_face = fe_neighbor_face->get_dphi();
@@ -409,36 +410,40 @@ void assemble_ipdg_poisson(EquationSystems & es,
     
     for ( ; el != end_el; ++el)
     {  
-   
+
         const Elem * elem = *el;
         dof_map.dof_indices (elem, dof_indices);
         const unsigned int n_dofs = dof_indices.size();
-    
         fe->reinit (elem);
+  
+        // initializing local matrix and local rhs
         Ke.resize (n_dofs, n_dofs);
- 
+      
         for (unsigned int qp=0; qp<qrule.n_points(); qp++)
         {
             for (unsigned int i=0; i<n_dofs; i++)
             {
                 for (unsigned int j=0; j<n_dofs; j++)
                 {
-                    Ke(i,j) += JxW[qp]*(epsilon_inv*phi[i][qp]*phi[j][qp] + diffusion  * dphi[i][qp]*dphi[j][qp]);
+                    Ke(i,j) += JxW[qp]*dphi[i][qp]*dphi[j][qp];
                 }
             }
         }
 
+        // looping over element sides
         for (unsigned int side=0; side<elem->n_sides(); side++)
         {
+            // we enter here if the element side is on a physical boundary
             if (is_physical_bdry(elem, side, boundary_info, dof_map))
             { 
                 // Pointer to the element face
                 fe_elem_face->reinit(elem, side);
                 
+                // get sideset IDs
+                const std::vector<short int> bdry_ids = boundary_info.boundary_ids(elem, side);
+                
                 UniquePtr<Elem> elem_side (elem->build_side(side));
-                // h element dimension to compute the interior penalty parameter
-                const unsigned int elem_b_order = static_cast<unsigned int> (fe_elem_face->get_order());
-                const double h_elem = elem->volume()/elem_side->volume() * 1./pow(elem_b_order, 2.);
+                const double h0_elem = pow(elem->volume()/elem_side->volume(),beta0);
                 
                 for (unsigned int qp=0; qp<qface.n_points(); qp++)
                 {
@@ -448,39 +453,37 @@ void assemble_ipdg_poisson(EquationSystems & es,
                         for (unsigned int j=0; j<n_dofs; j++)
                         {
                             // stability
-                            Ke(i,j) += diffusion  * JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[i][qp] * phi_face[j][qp];
+                            Ke(i,j) += JxW_face[qp] * jump0_penalty/h0_elem * phi_face[i][qp] * phi_face[j][qp];
                             
                             // consistency
                             Ke(i,j) -=
-                                    diffusion  * JxW_face[qp] *
+                                    JxW_face[qp] *
                                     (phi_face[i][qp] * (dphi_face[j][qp]*qface_normals[qp]) +
                                     phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
                         }
-                                                
                     }
                 }
             }
             
-            // element side is either in the interior of the domain or 
+            // we enter here if element side is either in the interior of the domain or 
+            // on a periodic boundary.
+             // element side is either in the interior of the domain or 
             // on a periodic boundary.
             else
             {
-                // Store a pointer to the neighbor we are currently
-                // working on. if this side is not on the physical boundary,
-                // then it must be on a periodic boundary or an interior face
-                // between elements.
-                const Elem * neighbor = elem->topological_neighbor(side,
-                                                                   mesh,
-                                                                   point_locator,
-                                                                   periodic_boundaries);
-          
+                // get topological neighbor of element
+                const Elem* neighbor = elem->topological_neighbor(side,
+                                                                  mesh,
+                                                                  point_locator,
+                                                                  periodic_boundaries);
+                               
                 // find id of corresponding neighbor side,
                 // since elements with periodic boundaries may not share the same
                 // side in physical space.
                 int blah = 0;
                 for (int foo = 0; foo < neighbor->n_sides(); foo++)
                 {
-                    const Elem *  foo_elem = neighbor->topological_neighbor(foo, mesh, point_locator, periodic_boundaries);
+                    const Elem*  foo_elem = neighbor->topological_neighbor(foo, mesh, point_locator, periodic_boundaries);
                     
                     if (!(foo_elem == libmesh_nullptr))
                     {
@@ -489,10 +492,10 @@ void assemble_ipdg_poisson(EquationSystems & es,
                 }
                 const int neighbor_side = blah;
                                          
-                // Get the global id of the element and the neighbor
+                // Get the global element id of the element and the neighbor
                 const unsigned int elem_id = elem->id();
                 const unsigned int neighbor_id = neighbor->id();
-
+                             
                 if ((neighbor->active() &&
                         (neighbor->level() == elem->level()) &&
                         (elem_id < neighbor_id)) ||
@@ -501,56 +504,89 @@ void assemble_ipdg_poisson(EquationSystems & es,
                     // Pointer to the element side
                     UniquePtr<Elem> elem_side (elem->build_side(side));
                     
-                    // h dimension to compute the interior penalty penalty parameter
-                    const unsigned int elem_b_order = static_cast<unsigned int>(fe_elem_face->get_order());
-                    const unsigned int neighbor_b_order = static_cast<unsigned int>(fe_neighbor_face->get_order());
-                    const double side_order = (elem_b_order + neighbor_b_order)/2.;
-                    const double h_elem = (elem->volume()/elem_side->volume()) * 1./pow(side_order,2.);
-                    
-                    // The quadrature point locations on the neighbor side
+                    // penalty parameters
+                    const double h0_elem = pow(elem->volume()/elem_side->volume(),beta0);
+                    const double h1_elem = pow(elem->volume()/elem_side->volume(),beta1);
+                                       
+                    // vectors to store quad point locations in physical space
+                    // and the reference element
                     std::vector<libMesh::Point> qface_neighbor_point;
                     std::vector<libMesh::Point> qface_neighbor_ref_point;
                     std::vector<libMesh::Point> temp;
-                                                            
-                    // Reinitialize shape functions on the element side
+                    std::vector<libMesh::Point> qface_point;
+                    
+                    // initialize shape functions on element side
                     fe_elem_face->reinit(elem, side);
-                    
-                    // re init this temporarily...
-                    fe_neighbor_face->reinit(neighbor, neighbor_side);
-                    
-                    // Get the physical locations of the element quadrature points
-                    qface_neighbor_point = fe_neighbor_face->get_xyz();
-                    
-                    // Find their ref locations on the neighbor
-                    FEInterface::inverse_map (neighbor->dim(),
-                                              fe->get_fe_type(),
-                                              neighbor,
-                                              qface_neighbor_point,
-                                              qface_neighbor_ref_point);
                                         
-                    // rearrange ref points on the neighbor side for boundary integration
-                    for (int ii = 0; ii < qface.n_points(); ii++)
+                    // if this is true, we are in fact on a periodic boundary
+                    if (elem->neighbor(side) == libmesh_nullptr)
                     {
-                        temp.push_back(qface_neighbor_ref_point[qface.n_points() - 1 - ii]);
+                        // grab the boundary id (sideset id) of the neighbor side
+                        const short int bdry_id = boundary_info.boundary_id(neighbor, neighbor_side);
+                        PeriodicBoundaryBase* periodic_boundary = periodic_boundaries->boundary(bdry_id);
+                        
+                        // re init this temporarily to get the physical locations of the 
+                        // quad points on the the neighbor side
+                        fe_neighbor_face->reinit(neighbor, neighbor_side);
+                        
+                        // Get the physical locations of the element quadrature points
+                        qface_neighbor_point = fe_neighbor_face->get_xyz();
+                        qface_point = fe_elem_face->get_xyz();
+                        
+                        // Find their ref locations of neighbor side quad points
+                        FEInterface::inverse_map (neighbor->dim(),
+                                                  fe->get_fe_type(),
+                                                  neighbor,
+                                                  qface_neighbor_point,
+                                                  qface_neighbor_ref_point);
+                        
+                        // rearrange ref points on the neighbor side for boundary integration
+                        // to be consistent with those on the element side
+                        for (int ii = 0; ii < qface_point.size(); ii++)
+                        {  
+                            for (int jj = 0; jj < qface_neighbor_point.size(); ++jj)
+                            {
+                                Point pp = periodic_boundary->get_corresponding_pos(qface_neighbor_point[jj]);
+                                Point diff = qface_point[ii] - pp;
+                                if(diff.norm()/qface_point[ii].norm() < TOLERANCE)
+                                {
+                                    temp.push_back(qface_neighbor_ref_point[jj]);
+                                }
+                            }
+                        }
+                        // Calculate the neighbor element shape functions at those locations
+                        fe_neighbor_face->reinit(neighbor, &temp);
                     }
-                    
-                    // Calculate the neighbor element shape functions at those locations
-                    fe_neighbor_face->reinit(neighbor, &temp);
-                                       
-   
+                    // otherwise, we are on an interior edge and the element and its neighbor
+                    // share a side in physical space
+                    else
+                    {
+                        // Get the physical locations of the element quadrature points
+                        qface_point = fe_elem_face->get_xyz();
+                        
+                        // Find their locations on the neighbor
+                        FEInterface::inverse_map (elem->dim(),
+                                fe->get_fe_type(),
+                                neighbor,
+                                qface_point,
+                                qface_neighbor_ref_point);
+                        
+                        // Calculate the neighbor element shape functions at those locations
+                        fe_neighbor_face->reinit(neighbor, &qface_neighbor_ref_point);
+                    }
+                  
                     std::vector<dof_id_type> neighbor_dof_indices;
                     dof_map.dof_indices (neighbor, neighbor_dof_indices);
                     const unsigned int n_neighbor_dofs = neighbor_dof_indices.size();
                     
+                    // initialize local  matrices for surface integrals
                     Kne.resize (n_neighbor_dofs, n_dofs);
                     Ken.resize (n_dofs, n_neighbor_dofs);
                     Kee.resize (n_dofs, n_dofs);
                     Knn.resize (n_neighbor_dofs, n_neighbor_dofs);
-      
+               
                     for (unsigned int qp=0; qp<qface.n_points(); qp++)
                     {
-                        // Kee Matrix. Integrate the element test function i
-                        // against the element test function j
                         for (unsigned int i=0; i<n_dofs; i++)
                         {
                             for (unsigned int j=0; j<n_dofs; j++)
@@ -562,12 +598,12 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                         phi_face[i][qp]*(qface_normals[qp]*dphi_face[j][qp]));
                                 
                                 // stability
-                                Kee(i,j) += JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[j][qp]*phi_face[i][qp];
+                                Kee(i,j) += JxW_face[qp] * jump0_penalty/h0_elem * phi_face[j][qp]*phi_face[i][qp];
+                                Kee(i,j) += JxW_face[qp] * jump1_penalty/h1_elem * (qface_normals[qp]*dphi_face[j][qp])*(qface_normals[qp]*dphi_face[i][qp]);
+
                             }
                         }
-                        
-                        // Knn Matrix. Integrate the neighbor test function i
-                        // against the neighbor test function j
+                                              
                         for (unsigned int i=0; i<n_neighbor_dofs; i++)
                         {
                             for (unsigned int j=0; j<n_neighbor_dofs; j++)
@@ -580,12 +616,13 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                 
                                 // stability
                                 Knn(i,j) +=
-                                        JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_neighbor_face[j][qp]*phi_neighbor_face[i][qp];
+                                        JxW_face[qp] * jump0_penalty/h0_elem * phi_neighbor_face[j][qp]*phi_neighbor_face[i][qp];
+                                Knn(i,j) += JxW_face[qp] * jump1_penalty/h1_elem * (qface_normals[qp]*dphi_neighbor_face[j][qp])*(qface_normals[qp]*dphi_neighbor_face[i][qp]);
+
                             }
                         }
                         
-                        // Kne Matrix. Integrate the neighbor test function i
-                        // against the element test function j
+                     
                         for (unsigned int i=0; i<n_neighbor_dofs; i++)
                         {
                             for (unsigned int j=0; j<n_dofs; j++)
@@ -597,12 +634,11 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                         phi_face[j][qp]*(qface_normals[qp]*dphi_neighbor_face[i][qp]));
                                 
                                 // stability
-                                Kne(i,j) -= JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[j][qp]*phi_neighbor_face[i][qp];
+                                Kne(i,j) -= JxW_face[qp] * jump0_penalty/h0_elem * phi_face[j][qp]*phi_neighbor_face[i][qp];
+                                Kne(i,j) -= JxW_face[qp] * jump1_penalty/h1_elem * (qface_normals[qp]*dphi_face[j][qp])*(qface_normals[qp]*dphi_neighbor_face[i][qp]);
                             }
                         }
-                        
-                        // Ken Matrix. Integrate the element test function i
-                        // against the neighbor test function j
+                                               
                         for (unsigned int i=0; i<n_dofs; i++)
                         {
                             for (unsigned int j=0; j<n_neighbor_dofs; j++)
@@ -614,15 +650,11 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                         phi_face[i][qp]*(qface_normals[qp]*dphi_neighbor_face[j][qp]));
                                 
                                 // stability
-                                Ken(i,j) -= JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[i][qp]*phi_neighbor_face[j][qp];
+                                Ken(i,j) -= JxW_face[qp] * jump0_penalty/h0_elem * phi_face[i][qp]*phi_neighbor_face[j][qp];
+                                Ken(i,j) -= JxW_face[qp] * jump1_penalty/h1_elem * (qface_normals[qp]*dphi_face[i][qp])*(qface_normals[qp]*dphi_neighbor_face[j][qp]);
                             }
                         }
                     }
-
-                    Kne *= diffusion;
-                    Ken *= diffusion;
-                    Knn *= diffusion;                    
-                    Kee *= diffusion;
                     
                     ellipticdg_system.matrix->add_matrix(Kne, neighbor_dof_indices, dof_indices);
                     ellipticdg_system.matrix->add_matrix(Ken, dof_indices, neighbor_dof_indices);
@@ -631,10 +663,9 @@ void assemble_ipdg_poisson(EquationSystems & es,
                 
                 }
             }
-        }
-
+        }     
         ellipticdg_system.matrix->add_matrix(Ke, dof_indices);
-     }
+    }
     
     ellipticdg_system.matrix->close();
 }
@@ -675,7 +706,7 @@ assemble_cg_poisson(EquationSystems& es, const std::string& /*system_name*/)
     const double epsilon = es.parameters.get<Real>("Phi_epsilon");
     const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
     
-    const Real PENALTY = es.parameters.get<Real> ("cg_poisson_penalty");
+    const Real PENALTY = es.parameters.get<Real> ("cg_penalty");
     const Real diffusion = es.parameters.get<Real> ("Phi_diffusion");
     
     MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
@@ -815,8 +846,11 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     System& Phi_system = d_equation_systems[part]->add_system<TransientLinearImplicitSystem>(PHI_SYSTEM_NAME);
                 
     d_equation_systems[part]->parameters.set<Real>("Phi_epsilon") = d_epsilon;
-    d_equation_systems[part]->parameters.set<Real>("ipdg_poisson_penalty") = ipdg_poisson_penalty;
-    d_equation_systems[part]->parameters.set<Real>("cg_poisson_penalty") = cg_poisson_penalty;
+    d_equation_systems[part]->parameters.set<Real>("ipdg_jump0_penalty") = ipdg_jump0_penalty;
+    d_equation_systems[part]->parameters.set<Real>("ipdg_jump1_penalty") = ipdg_jump1_penalty;
+    d_equation_systems[part]->parameters.set<Real>("ipdg_beta0_penalty") = ipdg_beta0;
+    d_equation_systems[part]->parameters.set<Real>("ipdg_beta1") = ipdg_beta1;
+    d_equation_systems[part]->parameters.set<Real>("cg_penalty") = cg_penalty;
     d_equation_systems[part]->parameters.set<std::string>("Phi_solver") = Phi_solver;
     d_equation_systems[part]->parameters.set<Real>("dt") = Phi_dt;
     d_equation_systems[part]->parameters.set<Real>("Phi_diffusion") = Phi_diffusion;
@@ -1668,7 +1702,7 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
     const unsigned int elem_b_order = static_cast<unsigned int> (libmesh_fe_face->get_order());
     
     // things for building RHS of Phi linear system based on poisson solver.
-    const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
+    const Real cg_penalty = equation_systems->parameters.get<Real> ("cg_penalty");
     
     System& X_system = equation_systems->get_system(COORDS_SYSTEM_NAME);
     std::vector<int> X_vars(NDIM);
@@ -1855,7 +1889,7 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
                 // Add the boundary forces to the right-hand-side vector.
                 for (unsigned int i = 0; i < n_basis; ++i)
                 {
-                    Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
+                    Phi_rhs_e(i) += cg_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
                 }
             }
             
@@ -1906,8 +1940,11 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     const unsigned int elem_b_order = static_cast<unsigned int> (libmesh_fe_face->get_order());
     
     // things for building RHS of Phi linear system based on poisson solver.
-    const Real cg_poisson_penalty = equation_systems->parameters.get<Real> ("cg_poisson_penalty");
-    const Real ipdg_poisson_penalty = equation_systems->parameters.get<Real> ("ipdg_poisson_penalty");
+    const Real cg_penalty = equation_systems->parameters.get<Real> ("cg_penalty");
+    const Real ipdg_jump0_penalty = equation_systems->parameters.get<Real> ("ipdg_jump0_penalty");
+    const Real ipdg_jump1_penalty = equation_systems->parameters.get<Real> ("ipdg_jump1_penalty");
+    const Real ipdg_beta0 = equation_systems->parameters.get<Real> ("ipdg_beta0");
+    const Real ipdg_beta1 = equation_systems->parameters.get<Real> ("ipdg_beta1");
     const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
     const Real diffusion = equation_systems->parameters.get<Real> ("Phi_diffusion");
     const Real dt = equation_systems->parameters.get<Real> ("dt");
@@ -2015,7 +2052,7 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
             
             // for the IPDG penalty parameter   
             UniquePtr<Elem> elem_side (elem->build_side(side));
-            const double h_elem = elem->volume()/elem_side->volume() * 1./pow(elem_b_order, 2.);
+            const double h0_elem = pow(elem->volume()/elem_side->volume(),beta0);
             
             for (unsigned int qp = 0; qp < n_qp; ++qp)
             {
@@ -2135,17 +2172,17 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
                 {
                     if ( (Phi_solver.compare("CG") == 0) || (Phi_solver.compare("CG_HEAT")==0 ) )
                     {
-                        Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
+                        Phi_rhs_e(i) += cg_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
                     }
                     else if (Phi_solver.compare("IPDG") == 0)
                     {
                         
-                        Phi_rhs_e(i) += diffusion * JxW_face[qp] * Phi * ipdg_poisson_penalty/h_elem * phi_face[i][qp];
+                        Phi_rhs_e(i) += diffusion * JxW_face[qp] * Phi * ipdg_jump0_penalty/h0_elem * phi_face[i][qp];
                         Phi_rhs_e(i) -= diffusion * JxW_face[qp] * dphi_face[i][qp] * (Phi*normal_face[qp]);
                     }
                     else // default solver to CG
                     {
-                        Phi_rhs_e(i) += cg_poisson_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
+                        Phi_rhs_e(i) += cg_penalty * Phi * phi_face[i][qp] * JxW_face[qp];
                     }    
                        
                 }
@@ -3441,9 +3478,12 @@ IBFEMethod::commonConstructor(const std::string& object_name,
     // Indicate that all of the parts do NOT use stress normalization by default
     // and set some default values.
     d_epsilon = 0.0;
-    ipdg_poisson_penalty = 2.0;
+    ipdg_jump0_penalty = 2.0;
+    ipdg_jump1_penalty = 2.0;
+    ipdg_beta0 = 1.0;
+    ipdg_beta1 = 1.0;
     Phi_fe_order = static_cast<libMesh::Order>(1);
-    cg_poisson_penalty = 1e10;
+    cg_penalty = 1e10;
     Phi_solver = "CG";
     Phi_diffusion = 1.0;
     scale_Phi_by_J = true;
@@ -3634,8 +3674,11 @@ IBFEMethod::getFromInput(Pointer<Database> db, bool /*is_from_restart*/)
     Phi_diffusion = db->getDouble("Phi_diffusion");
     Phi_solver = db->getString("Phi_solver");
     scale_Phi_by_J = db->getBool("scale_Phi_by_J");
-    ipdg_poisson_penalty = db->getDouble("ipdg_poisson_penalty");
-    cg_poisson_penalty = db->getDouble("cg_poisson_penalty");
+    ipdg_jump0_penalty = db->getDouble("ipdg_jump0_penalty");
+    ipdg_jump1_penalty = db->getDouble("ipdg_jump1_penalty");
+    ipdg_beta0 = db->getDouble("ipdg_beta0");
+    ipdg_beta1 = db->getDouble("ipdg_beta1");
+    cg_penalty = db->getDouble("cg_penalty");
     Phi_dt = db->getDouble("Phi_dt");
     Phi_fe_order = static_cast<Order>( db->getIntegerWithDefault("Phi_fe_order", 2) );
        

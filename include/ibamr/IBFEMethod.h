@@ -634,9 +634,12 @@ protected:
      * Data related to handling stress normalization.
      */
     double d_epsilon;
-    double ipdg_poisson_penalty;
+    double ipdg_jump0_penalty; 
+    double ipdg_jump1_penalty;
+    double ipdg_beta0;
+    double ipdg_beta1;
     libMesh::Order Phi_fe_order;
-    double cg_poisson_penalty;
+    double cg_penalty;
     double Phi_dt;
     double Phi_diffusion;
     std::string Phi_solver;

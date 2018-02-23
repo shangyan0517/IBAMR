@@ -127,7 +127,10 @@ IBFEMethod {
    Phi_dt                     = DT 
    Phi_fe_order               = 2                                                                    
    Phi_solver                 = "CG_HEAT"
-   ipdg_poisson_penalty       = 2.0
+   ipdg_jump0_penalty         = 2.0
+   ipdg_jump1_penalty         = 2.0
+   ipdg_beta0_penalty         = 2.0
+   ipdg_beta1_penalty         = 2.0
    cg_poisson_penalty         = 1.0e10
 }
 
