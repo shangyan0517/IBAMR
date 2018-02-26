@@ -354,17 +354,20 @@ void assemble_ipdg_poisson(EquationSystems & es,
     point_locator.build(TREE_ELEMENTS, mesh);
     if(point_locator.initialized()) { std::cout << "point locator initialized" << std::endl; } 
     const unsigned int dim = mesh.mesh_dimension();
-    LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>("EllipticDG");
+    LinearImplicitSystem& system = es.get_system<LinearImplicitSystem>(IBFEMethod::PHI_SYSTEM_NAME);
     const Real jump0_penalty = es.parameters.get<Real> ("ipdg_jump0_penalty");
     const Real jump1_penalty = es.parameters.get<Real> ("ipdg_jump1_penalty");
     const Real beta0 = es.parameters.get<Real> ("ipdg_beta0");
     const Real beta1 = es.parameters.get<Real> ("ipdg_beta1");
+    const double epsilon = es.parameters.get<Real>("Phi_epsilon");
+    const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
+    const Real diffusion = es.parameters.get<Real> ("Phi_diffusion");
         
     // had to remove the 'const' qualifier for dof_map because I need info about periodic boundaries
-    DofMap& dof_map = ellipticdg_system.get_dof_map();
+    DofMap& dof_map = system.get_dof_map();
     PeriodicBoundaries* periodic_boundaries = dof_map.get_periodic_boundaries();
     
-    FEType fe_type = ellipticdg_system.variable_type(0);
+    FEType fe_type = system.variable_type(0);
     
     UniquePtr<FEBase> fe  (FEBase::build(dim, fe_type));
     UniquePtr<FEBase> fe_elem_face(FEBase::build(dim, fe_type));
@@ -424,7 +427,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
             {
                 for (unsigned int j=0; j<n_dofs; j++)
                 {
-                    Ke(i,j) += JxW[qp]*dphi[i][qp]*dphi[j][qp];
+                    Ke(i,j) += JxW[qp]*(epsilon_inv*phi[i][qp]*phi[j][qp] + diffusion  * dphi[i][qp]*dphi[j][qp]);
                 }
             }
         }
@@ -436,10 +439,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
             if (is_physical_bdry(elem, side, boundary_info, dof_map))
             { 
                 // Pointer to the element face
-                fe_elem_face->reinit(elem, side);
-                
-                // get sideset IDs
-                const std::vector<short int> bdry_ids = boundary_info.boundary_ids(elem, side);
+                fe_elem_face->reinit(elem, side);                
                 
                 UniquePtr<Elem> elem_side (elem->build_side(side));
                 const double h0_elem = pow(elem->volume()/elem_side->volume(),beta0);
@@ -655,18 +655,22 @@ void assemble_ipdg_poisson(EquationSystems & es,
                         }
                     }
                     
-                    ellipticdg_system.matrix->add_matrix(Kne, neighbor_dof_indices, dof_indices);
-                    ellipticdg_system.matrix->add_matrix(Ken, dof_indices, neighbor_dof_indices);
-                    ellipticdg_system.matrix->add_matrix(Kee, dof_indices);
-                    ellipticdg_system.matrix->add_matrix(Knn, neighbor_dof_indices);
+                    Kne *= diffusion;
+                    Ken *= diffusion;
+                    Knn *= diffusion;                    
+                    Kee *= diffusion;
+                    
+                    system.matrix->add_matrix(Kne, neighbor_dof_indices, dof_indices);
+                    system.matrix->add_matrix(Ken, dof_indices, neighbor_dof_indices);
+                    system.matrix->add_matrix(Kee, dof_indices);
+                    system.matrix->add_matrix(Knn, neighbor_dof_indices);
                 
                 }
             }
         }     
-        ellipticdg_system.matrix->add_matrix(Ke, dof_indices);
+        system.matrix->add_matrix(Ke, dof_indices);
     }
-    
-    ellipticdg_system.matrix->close();
+    system.matrix->close();
 }
 
 
@@ -847,7 +851,7 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     d_equation_systems[part]->parameters.set<Real>("Phi_epsilon") = d_epsilon;
     d_equation_systems[part]->parameters.set<Real>("ipdg_jump0_penalty") = ipdg_jump0_penalty;
     d_equation_systems[part]->parameters.set<Real>("ipdg_jump1_penalty") = ipdg_jump1_penalty;
-    d_equation_systems[part]->parameters.set<Real>("ipdg_beta0_penalty") = ipdg_beta0;
+    d_equation_systems[part]->parameters.set<Real>("ipdg_beta0") = ipdg_beta0;
     d_equation_systems[part]->parameters.set<Real>("ipdg_beta1") = ipdg_beta1;
     d_equation_systems[part]->parameters.set<Real>("cg_penalty") = cg_penalty;
     d_equation_systems[part]->parameters.set<std::string>("Phi_solver") = Phi_solver;
@@ -1795,7 +1799,6 @@ void IBFEMethod::init_cg_heat(PetscVector<double>& X_vec,
             
             // for the IPDG penalty parameter   
             UniquePtr<Elem> elem_side (elem->build_side(side));
-            const double h_elem = elem->volume()/elem_side->volume() * 1./pow(elem_b_order, 2.);
             
             for (unsigned int qp = 0; qp < n_qp; ++qp)
             {
@@ -1941,7 +1944,6 @@ IBFEMethod::computeStressNormalization(PetscVector<double>& Phi_vec,
     // things for building RHS of Phi linear system based on poisson solver.
     const Real cg_penalty = equation_systems->parameters.get<Real> ("cg_penalty");
     const Real ipdg_jump0_penalty = equation_systems->parameters.get<Real> ("ipdg_jump0_penalty");
-    const Real ipdg_jump1_penalty = equation_systems->parameters.get<Real> ("ipdg_jump1_penalty");
     const Real ipdg_beta0 = equation_systems->parameters.get<Real> ("ipdg_beta0");
     const std::string Phi_solver = equation_systems->parameters.get<std::string> ("Phi_solver");
     const Real diffusion = equation_systems->parameters.get<Real> ("Phi_diffusion");
@@ -3477,7 +3479,7 @@ IBFEMethod::commonConstructor(const std::string& object_name,
     // and set some default values.
     d_epsilon = 0.0;
     ipdg_jump0_penalty = 2.0;
-    ipdg_jump1_penalty = 2.0;
+    ipdg_jump1_penalty = 0.0;
     ipdg_beta0 = 1.0;
     ipdg_beta1 = 1.0;
     Phi_fe_order = static_cast<libMesh::Order>(1);
