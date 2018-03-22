@@ -862,12 +862,12 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
     if(Phi_solver.compare("CG") == 0) 
     {
         Phi_system.attach_assemble_function(assemble_cg_poisson);
-        Phi_system.add_variable("Phi CG", d_fe_order[part], d_fe_family[part]);
+        Phi_system.add_variable("Phi_CG", d_fe_order[part], d_fe_family[part]);
     }
     else if (Phi_solver.compare("IPDG") == 0)
     {
         Phi_system.attach_assemble_function(assemble_ipdg_poisson);
-        Phi_system.add_variable("Phi IPDG", Phi_fe_order, MONOMIAL);
+        Phi_system.add_variable("Phi_IPDG", Phi_fe_order, MONOMIAL);
     }
     else if(Phi_solver.compare("CG_HEAT") == 0)
     {
@@ -875,12 +875,12 @@ IBFEMethod::registerStressNormalizationPart(unsigned int part)
         // initial conditions for the heat equation be computed as the solution
         // to the steady state heat equation
         Phi_system.attach_assemble_function(assemble_cg_poisson);
-        Phi_system.add_variable("Phi Heat", d_fe_order[part], d_fe_family[part]);
+        Phi_system.add_variable("Phi_Heat", d_fe_order[part], d_fe_family[part]);
     }
     else 
     {
         Phi_system.attach_assemble_function(assemble_cg_poisson);
-        Phi_system.add_variable("Phi CG", d_fe_order[part], d_fe_family[part]);
+        Phi_system.add_variable("Phi_CG", d_fe_order[part], d_fe_family[part]);
     }
         
     return;
@@ -1419,12 +1419,11 @@ IBFEMethod::initializeFEData()
             {
                 // attach assemble function for computing initial condition as solution to 
                 // steady state heat equation
-                d_X_systems[part] = &d_equation_systems[part]->get_system(COORDS_SYSTEM_NAME);
-                d_X_current_vecs[part] = dynamic_cast<PetscVector<double>*>(d_X_systems[part]->current_local_solution.get());
-                d_X_systems[part]->solution->localize(*d_X_current_vecs[part]);
+                PetscVector<double>* X_initial = dynamic_cast<PetscVector<double>*>(X_system.current_local_solution.get());
+                X_system.solution->localize(*X_initial);
                 Phi_system.assemble_before_solve = false;
                 Phi_system.assemble();
-                init_cg_heat(*d_X_current_vecs[part], part);
+                init_cg_heat(*X_initial, part);
                 // now we attach heat equation assemble function
                 Phi_system.attach_assemble_function(assemble_cg_heat); 
             }    
