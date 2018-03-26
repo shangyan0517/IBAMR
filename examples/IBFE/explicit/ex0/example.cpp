@@ -34,6 +34,7 @@
 
 // Headers for basic PETSc functions
 #include <petscsys.h>
+
 // Headers for basic SAMRAI objects
 #include <BergerRigoutsos.h>
 #include <CartesianGridGeometry.h>
@@ -46,9 +47,6 @@
 #include <libmesh/mesh.h>
 #include <libmesh/mesh_generation.h>
 #include <libmesh/periodic_boundary.h>
-#include <libmesh/transient_system.h>
-#include <libmesh/linear_implicit_system.h>
-
 
 // Headers for application-specific algorithm/data structure objects
 #include <boost/multi_array.hpp>
@@ -135,20 +133,18 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
     SAMRAI_MPI::setCommunicator(PETSC_COMM_WORLD);
     SAMRAI_MPI::setCallAbortInSerialInsteadOfExit();
     SAMRAIManager::startup();
-        
+
     // resize u_err and p_err to hold error data
     u_err.resize(3);
     p_err.resize(3);
-           
-    
+
     { // cleanup dynamically allocated objects prior to shutdown
-           
+
         // Parse command line options, set some standard options from the input
         // file, initialize the restart database (if this is a restarted run),
         // and enable file logging.
         Pointer<AppInitializer> app_initializer = new AppInitializer(argc, argv, "IB.log");
         Pointer<Database> input_db = app_initializer->getInputDatabase();
-        Pointer<Database> ibfe_db = app_initializer->getComponentDatabase("IBFEMethod");
 
         // Get various standard options set in the input file.
         const bool dump_viz_data = app_initializer->dumpVizData();
@@ -247,19 +243,17 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                                         error_detector,
                                         box_generator,
                                         load_balancer);
-        
+
         // Configure the IBFE solver.
         ib_method_ops->initializeFEEquationSystems();
         FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager();
         ib_method_ops->registerInitialCoordinateMappingFunction(coordinate_mapping_function);
         ib_method_ops->registerPK1StressFunction(PK1_stress_function);
-                
-        // setup libmesh things for eliminating pressure jumps
         if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
         {
             ib_method_ops->registerStressNormalizationPart();
         }
-        
+
         // Set up post processor to recover computed stresses.
         Pointer<IBFEPostProcessor> ib_post_processor =
             new IBFECentroidPostProcessor("IBFEPostProcessor", fe_data_manager);
@@ -354,38 +348,28 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
         // Print the input database contents to the log file.
         plog << "Input database:\n";
         input_db->printClassData(plog);
-        
+
         // Setup data used to determine the accuracy of the computed solution.
         const Pointer<hier::Variable<NDIM> > u_var = navier_stokes_integrator->getVelocityVariable();
         const Pointer<VariableContext> u_ctx = navier_stokes_integrator->getCurrentContext();
-        
+
         VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
         const int u_idx = var_db->mapVariableAndContextToIndex(u_var, u_ctx);
         const int u_cloned_idx = var_db->registerClonedPatchDataIndex(u_var, u_idx);
 
         const Pointer<hier::Variable<NDIM> > p_var = navier_stokes_integrator->getPressureVariable();
         const Pointer<VariableContext> p_ctx = navier_stokes_integrator->getCurrentContext();
-        
+
         const int p_idx = var_db->mapVariableAndContextToIndex(p_var, p_ctx);
         const int p_cloned_idx = var_db->registerClonedPatchDataIndex(p_var, p_idx);
         visit_data_writer->registerPlotQuantity("P error", "SCALAR", p_cloned_idx);
-        
-        // so we can see what Phi looks like, interpolated on the Cartesian grid
-        visit_data_writer->registerPlotQuantity("Eulerian Phi", "SCALAR", ib_method_ops->phi_current_idx);
-        const int phi_cloned_idx = var_db->registerClonedPatchDataIndex(ib_method_ops->phi_var, ib_method_ops->phi_current_idx);
-        
-        // make an index so we can look at the sum of the pressure-like variable P and stress normalization Phi
-        const int p_plus_phi_idx = var_db->registerClonedPatchDataIndex(ib_method_ops->phi_var, ib_method_ops->phi_current_idx);
-        visit_data_writer->registerPlotQuantity("P plus Phi", "SCALAR", p_plus_phi_idx);
-        
+
         const int coarsest_ln = 0;
         const int finest_ln = patch_hierarchy->getFinestLevelNumber();
         for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
         {
             patch_hierarchy->getPatchLevel(ln)->allocatePatchData(u_cloned_idx);
             patch_hierarchy->getPatchLevel(ln)->allocatePatchData(p_cloned_idx);
-            patch_hierarchy->getPatchLevel(ln)->allocatePatchData(phi_cloned_idx);
-            patch_hierarchy->getPatchLevel(ln)->allocatePatchData(p_plus_phi_idx);
         }
 
         // Write out initial visualization data.
@@ -406,14 +390,12 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                     exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
             }
         }
-        
+
         // Open streams to save volume of structure.
         ofstream volume_stream;
-        ofstream error_stream;
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.open("volume.curve", ios_base::out | ios_base::trunc);
-            error_stream.open("errors.dat", ios_base::out | ios_base::app);
         }
 
         // Main time step loop.
@@ -424,62 +406,21 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
             iteration_num = time_integrator->getIntegratorStep();
             loop_time = time_integrator->getIntegratorTime();
 
-            
             pout << "\n";
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "At beginning of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";
-            
-            
+
             dt = time_integrator->getMaximumTimeStepSize();
             time_integrator->advanceHierarchy(dt);
             loop_time += dt;
 
-            // update Phi system solution vector if we are solving the heat equation
-            if(ibfe_db->getString("Phi_solver").compare("CG_HEAT") == 0)
-            {
-                ib_method_ops->evolveStressNormalization(loop_time - dt, loop_time);
-            } 
-                        
             pout << "\n";
             pout << "At end       of timestep # " << iteration_num << "\n";
             pout << "Simulation time is " << loop_time << "\n";
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
-             
-            // get a representation of the stress normalization function Phi on the Cartesian grid.
-            System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
-            NumericVector<double>* X_vec = X_system.solution.get();
-            NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
-            X_vec->localize(*X_ghost_vec);
-            
-            HierarchyMathOps hier_math_ops("HierarchyMathOps", patch_hierarchy);
-            hier_math_ops.setPatchHierarchy(patch_hierarchy);
-            hier_math_ops.resetLevels(coarsest_ln, finest_ln);
-            const double volume = hier_math_ops.getVolumeOfPhysicalDomain();
-            const int wgt_cc_idx = hier_math_ops.getCellWeightPatchDescriptorIndex();
-            const int wgt_sc_idx = hier_math_ops.getSideWeightPatchDescriptorIndex();
-            
-            if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
-            {
-                HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
-                System& Phi_system = equation_systems->get_system<System>(IBFEMethod::PHI_SYSTEM_NAME);
-                NumericVector<double>* Phi_vec = Phi_system.solution.get();
-                NumericVector<double>* Phi_ghost_vec = Phi_system.current_local_solution.get();
-                Phi_vec->localize(*Phi_ghost_vec);
-                const int phi_idx = ib_method_ops->phi_current_idx;
-                fe_data_manager->prolongData(phi_idx,
-                                             *Phi_ghost_vec,
-                                             *X_ghost_vec,
-                                             IBFEMethod::PHI_SYSTEM_NAME,
-                                             false,
-                                             false);
-            
-                const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
-                hier_cc_data_ops.addScalar(phi_cloned_idx, phi_idx, -phi_mean);
-                hier_cc_data_ops.add(p_plus_phi_idx, phi_idx, p_idx);
-            }
-                
+
             // At specified intervals, write visualization and restart files,
             // print out timer data, and store hierarchy data for post
             // processing.
@@ -521,45 +462,7 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                             loop_time,
                             postproc_data_dump_dirname);
             }
-            
-            
-            // Compute the volume of the structure.
-            double J_integral = 0.0;
-            DofMap& X_dof_map = X_system.get_dof_map();
-            std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
-            AutoPtr<FEBase> fe(FEBase::build(NDIM, X_dof_map.variable_type(0)));
-            AutoPtr<QBase> qrule = QBase::build(QGAUSS, NDIM, FIFTH);
-            fe->attach_quadrature_rule(qrule.get());
-            const std::vector<double>& JxW = fe->get_JxW();
-            const std::vector<std::vector<VectorValue<double> > >& dphi = fe->get_dphi();
-            TensorValue<double> FF;
-            boost::multi_array<double, 2> X_node;
-            const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
-            const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
-            for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
-            {
-                Elem* const elem = *el_it;
-                fe->reinit(elem);
-                for (unsigned int d = 0; d < NDIM; ++d)
-                {
-                    X_dof_map.dof_indices(elem, X_dof_indices[d], d);
-                }
-                const int n_qp = qrule->n_points();
-                get_values_for_interpolation(X_node, *X_ghost_vec, X_dof_indices);
-                for (int qp = 0; qp < n_qp; ++qp)
-                {
-                    jacobian(FF, qp, X_node, dphi);
-                    J_integral += abs(FF.det()) * JxW[qp];
-                }
-            }
-            J_integral = SAMRAI_MPI::sumReduction(J_integral);
-            if (SAMRAI_MPI::getRank() == 0)
-            {
-                volume_stream.precision(12);
-                volume_stream.setf(ios::fixed, ios::floatfield);
-                volume_stream << loop_time << " " << J_integral << endl;
-            }
-            
+
             // Compute velocity and pressure error norms.
             const int coarsest_ln = 0;
             const int finest_ln = patch_hierarchy->getFinestLevelNumber();
@@ -570,15 +473,20 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                 if (!level->checkAllocated(p_cloned_idx)) level->allocatePatchData(p_cloned_idx);
             }
 
-            
             pout << "\n"
                  << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n"
                  << "Computing error norms.\n\n";
-            
+
             u_init->setDataOnPatchHierarchy(u_cloned_idx, u_var, patch_hierarchy, loop_time);
             p_init->setDataOnPatchHierarchy(p_cloned_idx, p_var, patch_hierarchy, loop_time - 0.5 * dt);
 
-          
+            HierarchyMathOps hier_math_ops("HierarchyMathOps", patch_hierarchy);
+            hier_math_ops.setPatchHierarchy(patch_hierarchy);
+            hier_math_ops.resetLevels(coarsest_ln, finest_ln);
+            const double volume = hier_math_ops.getVolumeOfPhysicalDomain();
+            const int wgt_cc_idx = hier_math_ops.getCellWeightPatchDescriptorIndex();
+            const int wgt_sc_idx = hier_math_ops.getSideWeightPatchDescriptorIndex();
+
             Pointer<CellVariable<NDIM, double> > u_cc_var = u_var;
             if (u_cc_var)
             {
@@ -610,21 +518,13 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                      u_err[1] = hier_sc_data_ops.L2Norm(u_cloned_idx, wgt_sc_idx);
                      u_err[2] = hier_sc_data_ops.maxNorm(u_cloned_idx, wgt_sc_idx);
             }
-            
+
             HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
             const double p_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_idx, p_idx, -p_mean);
             const double p_cloned_mean = (1.0 / volume) * hier_cc_data_ops.integral(p_cloned_idx, wgt_cc_idx);
             hier_cc_data_ops.addScalar(p_cloned_idx, p_cloned_idx, -p_cloned_mean);
-            
-            // add in computed pressure-like field from harmonic problem
-            if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
-            {
-                hier_cc_data_ops.add(p_idx, p_idx, phi_cloned_idx);   
-            } 
- 
             hier_cc_data_ops.subtract(p_cloned_idx, p_idx, p_cloned_idx);
-            
             pout << "Error in p at time " << loop_time - 0.5 * dt << ":\n"
                  << "  L1-norm:  " 
                  << std::setprecision(10) << hier_cc_data_ops.L1Norm(p_cloned_idx, wgt_cc_idx) << "\n"
@@ -636,27 +536,60 @@ bool run_example(int argc, char** argv, std::vector<double>& u_err, std::vector<
                  p_err[1] = hier_cc_data_ops.L2Norm(p_cloned_idx, wgt_cc_idx);
                  p_err[2] = hier_cc_data_ops.maxNorm(p_cloned_idx, wgt_cc_idx);
 
-             
+                 // Compute the volume of the structure.
+                 double J_integral = 0.0;
+                 System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
+                 NumericVector<double>* X_vec = X_system.solution.get();
+                 NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
+                 X_vec->localize(*X_ghost_vec);
+                 DofMap& X_dof_map = X_system.get_dof_map();
+                 std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
+                 libMesh::UniquePtr<FEBase> fe(FEBase::build(NDIM, X_dof_map.variable_type(0)));
+                 libMesh::UniquePtr<QBase> qrule = QBase::build(QGAUSS, NDIM, FIFTH);
+                 fe->attach_quadrature_rule(qrule.get());
+                 const std::vector<double>& JxW = fe->get_JxW();
+                 const std::vector<std::vector<VectorValue<double> > >& dphi = fe->get_dphi();
+                 TensorValue<double> FF;
+                 boost::multi_array<double, 2> X_node;
+                 const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
+                 const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
+                 for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
+                 {
+                     Elem* const elem = *el_it;
+                     fe->reinit(elem);
+                     for (unsigned int d = 0; d < NDIM; ++d)
+                     {
+                         X_dof_map.dof_indices(elem, X_dof_indices[d], d);
+                     }
+                     const int n_qp = qrule->n_points();
+                     get_values_for_interpolation(X_node, *X_ghost_vec, X_dof_indices);
+                     for (int qp = 0; qp < n_qp; ++qp)
+                     {
+                         jacobian(FF, qp, X_node, dphi);
+                         J_integral += abs(FF.det()) * JxW[qp];
+                     }
+                 }
+                 J_integral = SAMRAI_MPI::sumReduction(J_integral);
+                 if (SAMRAI_MPI::getRank() == 0)
+                 {
+                     volume_stream.precision(12);
+                     volume_stream.setf(ios::fixed, ios::floatfield);
+                     volume_stream << loop_time << " " << J_integral << endl;
+                 }
         }
-        
-        // write out errors to file
-        error_stream << dx << " ";
-        error_stream << u_err[0] << " " <<  u_err[1] << " " <<  u_err[2] << " ";
-        error_stream << p_err[0] << " " <<  p_err[1] << " " <<  p_err[2] << std::endl;
-        
+
         // Close the logging streams.
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.close();
-            error_stream.close();
         }
 
         // Cleanup Eulerian boundary condition specification objects (when
         // necessary).
         for (unsigned int d = 0; d < NDIM; ++d) delete u_bc_coefs[d];
-        
-     } // cleanup dynamically allocated objects prior to shutdown
-    
+
+    } // cleanup dynamically allocated objects prior to shutdown
+
     SAMRAIManager::shutdown();
     return true;
 } 
