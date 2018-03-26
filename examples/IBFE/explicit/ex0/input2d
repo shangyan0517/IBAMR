@@ -122,6 +122,17 @@ IBFEMethod {
    use_jump_conditions        = USE_JUMP_CONDITIONS
    use_consistent_mass_matrix = USE_CONSISTENT_MASS_MATRIX
    IB_point_density           = IB_POINT_DENSITY
+   scale_Phi_by_J      = TRUE        
+   Phi_epsilon         = 0.0 
+   Phi_diffusion       = 1.0 
+   Phi_dt              = DT
+   Phi_fe_order        = 2
+   Phi_solver          = "CG_HEAT"
+   ipdg_jump0_penalty  = 20.0
+   ipdg_jump1_penalty  = 0.0
+   ipdg_beta0          = 1.0
+   ipdg_beta1          = 1.0
+   cg_penalty          = 1.0e10
 }
 
 INSCollocatedHierarchyIntegrator {
